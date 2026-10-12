@@ -1,0 +1,10 @@
+﻿{
+  "name": "ValheimHeraldryMod",
+  "description": "Write a heraldic blazon and see it painted on banners, shields and tabards.",
+  "version_number": "0.0.1",
+  "website_url": "https://github.com/Hippoflotomas/Heraldry-Mod",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2333",
+    "ValheimModding-Jotunn-2.30.2"
+  ]
+}
