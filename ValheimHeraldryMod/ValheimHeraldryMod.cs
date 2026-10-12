@@ -21,6 +21,9 @@ namespace ValheimHeraldryMod
         private void Awake()
         {
             Jotunn.Logger.LogInfo($"{PluginName} {PluginVersion} has landed");
+
+            // Dev-only: readback prototype (icons + fonts). Remove once the charge pipeline is settled.
+            CommandManager.Instance.AddConsoleCommand(new Dev.ReadbackProbe());
         }
     }
 }

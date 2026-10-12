@@ -37,6 +37,32 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
 
+  <!-- Game and Unity assemblies the plugin code calls directly (same approach as ShieldShare). -->
+  <ItemGroup>
+    <Reference Include="assembly_valheim">
+      <HintPath>$(VALHEIM_MANAGED)\assembly_valheim.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="assembly_utils">
+      <HintPath>$(VALHEIM_MANAGED)\assembly_utils.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SoftReferenceableAssets">
+      <!-- ZNetScene implements an interface from here; needed to compile code that uses ZNetScene -->
+      <HintPath>$(VALHEIM_MANAGED)\SoftReferenceableAssets.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextCoreFontEngineModule">
+      <!-- TextMeshPro font assets expose types from here -->
+      <HintPath>$(VALHEIM_MANAGED)\UnityEngine.TextCoreFontEngineModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextCoreTextEngineModule">
+      <HintPath>$(VALHEIM_MANAGED)\UnityEngine.TextCoreTextEngineModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
