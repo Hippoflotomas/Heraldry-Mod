@@ -64,6 +64,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Plain twill-weave cloth normal map (from BannerShare). Read by Rendering/ClothNormal.cs. -->
+    <EmbeddedResource Include="Art\Banner Bump Map.png">
+      <LogicalName>ValheimHeraldryMod.ClothNormal.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
     <None Include="README.md" />

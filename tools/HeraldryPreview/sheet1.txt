@@ -1,0 +1,19 @@
+// palette and furs
+Or
+Argent
+Azure
+Gules
+Sable
+Vert
+Purpure
+Tenne
+Murrey
+Sanguine
+Ermine
+Ermines
+Erminois
+Pean
+Vair
+Counter-vair
+Potent
+Counter-potent

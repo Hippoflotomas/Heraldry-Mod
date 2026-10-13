@@ -22,8 +22,17 @@ namespace ValheimHeraldryMod
         {
             Jotunn.Logger.LogInfo($"{PluginName} {PluginVersion} has landed");
 
+            HeraldryConfig.Bind(Config);
+            Banners.BannerRegistry.Init();
+
             // Dev-only: readback prototype (icons + fonts). Remove once the charge pipeline is settled.
             CommandManager.Instance.AddConsoleCommand(new Dev.ReadbackProbe());
+        }
+
+        private void Update()
+        {
+            // Upload banner textures that finished rendering on worker threads
+            Rendering.BlazonTextureCache.Pump();
         }
     }
 }
