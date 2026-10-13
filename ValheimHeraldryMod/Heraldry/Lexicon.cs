@@ -129,8 +129,34 @@ namespace ValheimHeraldryMod.Heraldry
         public static readonly HashSet<string> CrossCharges = new HashSet<string>
         {
             "crosslet", "crosslets", "moline", "patonce", "fleury", "flory", "formy", "formee", "pattee", "patty",
-            "potent", "botonny", "fitchy", "fitchee", "avellane", "pommy", "bottony",
+            "potent", "botonny", "fitchy", "fitchee", "avellane", "pommy", "bottony", "couped", "humetty", "humettee",
         };
+
+        /// <summary>Canonical name for a cross charge from the word after "cross".</summary>
+        public static string CrossName(string word)
+        {
+            switch (word)
+            {
+                case "crosslet": case "crosslets": return "cross crosslet";
+                case "formy": case "formee": case "pattee": case "patty": return "cross pattee";
+                case "flory": case "fleury": return "cross flory";
+                case "botonny": case "bottony": return "cross botonny";
+                case "couped": case "humetty": case "humettee": return "cross couped";
+                case "fitchy": case "fitchee": return "cross fitchy";
+                default: return "cross " + word;
+            }
+        }
+
+        /// <summary>Charges the renderer draws itself (geometric shapes). Everything else waits for charge art.</summary>
+        public static readonly HashSet<string> DrawnCharges = new HashSet<string>
+        {
+            "mullet", "roundel", "annulet", "lozenge", "mascle", "rustre", "fusil", "billet", "crescent",
+            "saltorel", "saltire", "cross", "cross couped", "cross crosslet", "cross pattee", "cross potent",
+            "bezant", "plate", "torteau", "hurt", "pellet", "pomme", "ogress", "golpe",
+        };
+
+        /// <summary>Drawn charges with no natural colour, so "proper" means nothing for them.</summary>
+        public static bool IsGeometric(string noun) => DrawnCharges.Contains(noun);
 
         public sealed class ChargeEntry
         {
@@ -138,6 +164,7 @@ namespace ValheimHeraldryMod.Heraldry
             public bool Plural;
             /// <summary>Roundels with a built-in tincture (a bezant is a roundel or).</summary>
             public string ImpliedTincture;
+            public string PassableNote;
         }
 
         public static readonly Dictionary<string, ChargeEntry> Charges = new Dictionary<string, ChargeEntry>();
@@ -160,7 +187,8 @@ namespace ValheimHeraldryMod.Heraldry
         {
             { "a", 1 }, { "an", 1 }, { "one", 1 }, { "two", 2 }, { "three", 3 }, { "four", 4 }, { "five", 5 },
             { "six", 6 }, { "seven", 7 }, { "eight", 8 }, { "nine", 9 }, { "ten", 10 }, { "eleven", 11 },
-            { "twelve", 12 }, { "fourteen", 14 }, { "sixteen", 16 },
+            { "twelve", 12 }, { "thirteen", 13 }, { "fourteen", 14 }, { "fifteen", 15 }, { "sixteen", 16 },
+            { "seventeen", 17 }, { "eighteen", 18 }, { "nineteen", 19 }, { "twenty", 20 },
         };
 
         public static readonly Dictionary<string, int> Ordinals = new Dictionary<string, int>
@@ -239,7 +267,17 @@ namespace ValheimHeraldryMod.Heraldry
             C("dragon", "dragons"); C("wyvern", "wyverns"); C("tree", "trees"); C("longship", "longships");
             C("ship", "ships"); C("hammer", "hammers"); C("valknut", "valknuts"); C("rune", "runes");
             C("sword", "swords"); C("axe", "axes"); C("tower", "towers"); C("key", "keys"); C("horn", "horns");
-            C("saltorel", "saltorels"); C("heart", "hearts"); C("star", "stars");
+            C("saltorel", "saltorels"); C("heart", "hearts");
+            const string StarNote = "a star with straight rays is a 'mullet'; with wavy rays, an 'estoile'";
+            Charges["star"] = new ChargeEntry { Singular = "mullet", PassableNote = StarNote };
+            Charges["stars"] = new ChargeEntry { Singular = "mullet", Plural = true, PassableNote = StarNote };
+            Charges["diamond"] = new ChargeEntry { Singular = "lozenge", PassableNote = "the heraldic term is 'lozenge'" };
+            Charges["diamonds"] = new ChargeEntry { Singular = "lozenge", Plural = true, PassableNote = "the heraldic term is 'lozenge'" };
+            Charges["circle"] = new ChargeEntry { Singular = "roundel", PassableNote = "the heraldic term is 'roundel'" };
+            Charges["circles"] = new ChargeEntry { Singular = "roundel", Plural = true, PassableNote = "the heraldic term is 'roundel'" };
+            Charges["ring"] = new ChargeEntry { Singular = "annulet", PassableNote = "the heraldic term is 'annulet'" };
+            Charges["rings"] = new ChargeEntry { Singular = "annulet", Plural = true, PassableNote = "the heraldic term is 'annulet'" };
+            Charges["moon"] = new ChargeEntry { Singular = "crescent", PassableNote = "the heraldic term is 'crescent'" };
             C("bezant", "bezants", "or"); C("plate", "plates", "argent"); C("torteau", "torteaux", "gules");
             C("hurt", "hurts", "azure"); C("pellet", "pellets", "sable"); C("pomme", "pommes", "vert");
             C("ogress", "ogresses", "sable"); C("golpe", "golpes", "purpure");

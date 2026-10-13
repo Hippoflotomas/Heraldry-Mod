@@ -29,6 +29,8 @@ namespace ValheimHeraldryMod.Banners
         private uint lastRevision = uint.MaxValue;
         private string currentText;   // normalised; null = nothing rendered yet
         private string cacheKey;
+        private string hoverProblemFor;   // text the cached problem belongs to
+        private string hoverProblem;
 
         private void Start()
         {
@@ -117,6 +119,14 @@ namespace ValheimHeraldryMod.Banners
                 return "";
             string text = GetText();
             string shown = string.IsNullOrEmpty(text) ? "<i>unpainted</i>" : $"\"{text}\"";
+            // Until the editing window exists, show the first problem the parser found (cached per text).
+            if (text != hoverProblemFor)
+            {
+                hoverProblemFor = text;
+                hoverProblem = string.IsNullOrEmpty(text) ? null : Heraldry.BlazonParser.FirstProblem(Heraldry.BlazonParser.Parse(text));
+            }
+            if (hoverProblem != null)
+                shown += $"\n<color=#ff7060>{hoverProblem}</color>";
             if (!PrivateArea.CheckAccess(transform.position, 0f, false, false))
                 return Localization.instance.Localize($"{m_displayName}\n{shown}\n$piece_noaccess");
             return Localization.instance.Localize($"{m_displayName}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] Write blazon");
@@ -132,8 +142,7 @@ namespace ValheimHeraldryMod.Banners
                 return false;
             if (!PrivateArea.CheckAccess(transform.position, 0f, true, false))
                 return true;
-            // Stand-in until the custom editing window (build order step 4).
-            TextInput.instance.RequestText(this, "Blazon", MaxBlazonLength);
+            UI.BlazonEditor.Open(this);
             return true;
         }
 

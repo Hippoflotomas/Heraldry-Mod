@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
@@ -24,8 +25,27 @@ namespace ValheimHeraldryMod.Heraldry
         private int pos;
         /// <summary>Ordinaries still waiting for a tincture given later ("a chevron between three mullets argent").</summary>
         private readonly List<Ordinary> awaitingTincture = new List<Ordinary>();
+        /// <summary>The charge group just parsed, for a following "in pale" or "two and one".</summary>
+        private Charge lastCharge;
+        /// <summary>"in chief three mullets": a placement waiting for the charges that follow it.</summary>
+        private Placement pendingPlacement;
+        private const string NeedsArt = "this charge needs art; it's drawn in a later update";
 
         public static Blazon Parse(string text) => new BlazonParser(text ?? "").Run();
+
+        /// <summary>The first thing worth telling the player ("'100': between two and sixteen pieces"), or null.</summary>
+        public static string FirstProblem(Blazon b)
+        {
+            if (b == null) return null;
+            foreach (var w in b.Words)
+                if (w.Status == WordStatus.Wrong)
+                    return $"'{w.Word}': {w.Message ?? "not understood"}";
+            if (b.Messages.Count > 0) return b.Messages[0];
+            foreach (var w in b.Words)
+                if (w.Status == WordStatus.Unsupported)
+                    return $"'{w.Word}': {w.Message ?? "not supported yet"}";
+            return null;
+        }
 
         private BlazonParser(string text)
         {
@@ -171,10 +191,22 @@ namespace ValheimHeraldryMod.Heraldry
                         int n = TakeNumber();
                         if (v.Kind == VariationKind.Chequy || v.Kind == VariationKind.Lozengy)
                             Mark(nt, WordStatus.Passable, "chequy and lozengy aren't counted; the number is ignored");
-                        else if (n < 2 || n > 16 || n % 2 == 1 && v.Kind == VariationKind.Gyronny)
-                            Mark(nt, WordStatus.Wrong, v.Kind == VariationKind.Gyronny ? "gyronny needs an even number of pieces" : "between two and sixteen pieces");
                         else
-                            field.Count = n;
+                        {
+                            // Out of range: say so, but draw the nearest allowed count so the result still looks intended
+                            int c = Math.Max(2, Math.Min(16, n));
+                            if (v.Kind == VariationKind.Gyronny && c % 2 == 1) c++;
+                            if (c != n)
+                                Mark(nt, WordStatus.Wrong, v.Kind == VariationKind.Gyronny && n >= 2 && n <= 16
+                                    ? $"gyronny needs an even number of pieces; drawn as {c}"
+                                    : $"between two and sixteen pieces; drawn as {c}");
+                            field.Count = c;
+                        }
+                    }
+                    else if (Cur == "of" && Peek(1) != null && !Lexicon.Tinctures.ContainsKey(Peek(1)))
+                    {
+                        Take();
+                        Take(WordStatus.Wrong, "expected a number of pieces, e.g. 'of eight'");
                     }
                     if (field.Line == LineKind.Straight) field.Line = TryLine();
                     return TwoTinctureField(field, vt);
@@ -286,41 +318,90 @@ namespace ValheimHeraldryMod.Heraldry
 
             if (w == "and") { Take(); return; }
 
-            if (w == "on")
+            if (w == "on" || (w == "charged" && Peek(1) == "with"))
             {
-                Take();
-                SkipFillers();
-                var host = ParseOrdinaryOrCharge(null);
+                var onTok = Take();
+                object host;
+                if (w == "charged")
+                {
+                    Take();
+                    host = result.Ordinaries.Count > 0 ? result.Ordinaries[result.Ordinaries.Count - 1] : null;
+                    if (host == null) Mark(onTok, WordStatus.Wrong, "charged? 'charged with' follows an ordinary, e.g. 'a chief azure charged with three mullets or'");
+                }
+                else if (Cur == "the" && Peek(1) != null && Lexicon.Ordinaries.TryGetValue(Peek(1), out var named) &&
+                         result.Ordinaries.Exists(o => o.Kind == named.Kind))
+                {
+                    // "on the chief ...": the one already described
+                    Take();
+                    Take();
+                    host = result.Ordinaries.FindLast(o => o.Kind == named.Kind);
+                }
+                else
+                {
+                    SkipFillers();
+                    host = ParseOrdinaryOrCharge();
+                }
                 if (host is Ordinary ord)
                 {
                     SkipFillers();
                     if (!AtEnd && Cur != "and")
                     {
-                        var c = ParseOrdinaryOrCharge(null);
-                        if (c is Charge ch) ord.Charges.Add(ch);
+                        var c = ParseOrdinaryOrCharge();
+                        if (c is Charge ch)
+                        {
+                            result.Charges.Remove(ch);
+                            ch.Placement = Placement.On;
+                            ch.Host = ord;
+                            ord.Charges.Add(ch);
+                            if (ord.Kind == OrdinaryKind.Bordure && ch.Drawable && ch.Count < 4)
+                                Mark(onTok, WordStatus.Passable, "charges on a bordure usually come in eights; drawn spaced around it");
+                        }
                     }
+                    else Mark(onTok, WordStatus.Wrong, "on the " + ord.Kind.ToString().ToLowerInvariant() + ", what?");
                 }
+                else if (host is Charge)
+                    Mark(onTok, WordStatus.Unsupported, "charges on charges aren't supported yet; drawn separately");
+                lastCharge = null;
                 return;
             }
 
             if (w == "between")
             {
-                Take(WordStatus.NotDrawnYet, "charges are drawn in a later update");
+                var betweenTok = Take();
+                Ordinary host = result.Ordinaries.Count > 0 ? result.Ordinaries[result.Ordinaries.Count - 1] : null;
+                if (host == null)
+                    Mark(betweenTok, WordStatus.Wrong, "between what? 'between' follows an ordinary, e.g. 'a chevron between three mullets'");
+                else if (host.Kind == OrdinaryKind.Chief || host.Kind == OrdinaryKind.Bordure)
+                    Mark(betweenTok, WordStatus.Wrong, $"nothing can be between a {host.Kind.ToString().ToLowerInvariant()}; just list the charges");
                 SkipFillers();
-                var c = ParseOrdinaryOrCharge("between");
+                if (ParseOrdinaryOrCharge() is Charge c && host != null)
+                {
+                    c.Placement = Placement.Between;
+                    c.Host = host;
+                }
                 return;
             }
 
             if (w == "in" && Peek(1) != null && IsPlacementWord(Peek(1)))
             {
-                Take(WordStatus.NotDrawnYet, "charge placement is drawn in a later update");
-                var place = Take(WordStatus.NotDrawnYet);
-                if (result.Charges.Count > 0)
-                    result.Charges[result.Charges.Count - 1].Placement = "in " + place.Text;
+                Take();
+                var placeTok = Take();
+                var place = PlacementFor(placeTok.Text);
+                if (place == Placement.Bend && Cur == "sinister")
+                {
+                    Take();
+                    place = Placement.BendSinister;
+                }
+                if (place == Placement.None)
+                    Mark(placeTok, WordStatus.Unsupported, $"'in {placeTok.Text}' isn't drawn yet; the charges keep their usual arrangement");
+                if (lastCharge != null && lastCharge.Placement == Placement.None)
+                    lastCharge.Placement = place;
+                else
+                    pendingPlacement = place;
                 return;
             }
 
-            if (w == "counterchanged" || w == "cotised" || w == "fimbriated" || w == "voided")
+            if (w == "counterchanged" || w == "cotised")
             {
                 Take(WordStatus.Unsupported, $"'{w}' here isn't supported yet");
                 return;
@@ -332,17 +413,33 @@ namespace ValheimHeraldryMod.Heraldry
                 return;
             }
 
-            ParseOrdinaryOrCharge(null);
+            ParseOrdinaryOrCharge();
         }
 
         private static bool IsPlacementWord(string w) =>
             w == "chief" || w == "base" || w == "fess" || w == "pale" || w == "bend" || w == "saltire" ||
-            w == "cross" || w == "orle" || w == "pile" || w == "chevron";
+            w == "cross" || w == "orle" || w == "pile" || w == "chevron" || w == "fesse";
+
+        private static Placement PlacementFor(string w)
+        {
+            switch (w)
+            {
+                case "chief": return Placement.Chief;
+                case "base": return Placement.Base;
+                case "fess": case "fesse": return Placement.Fess;
+                case "pale": return Placement.Pale;
+                case "bend": return Placement.Bend;
+                case "saltire": return Placement.Saltire;
+                case "cross": return Placement.Cross;
+                case "orle": return Placement.Orle;
+                default: return Placement.None; // pile, chevron: not drawn yet
+            }
+        }
 
         /// <summary>Parses "[count] noun [line|attitudes] tincture [details]". Returns an Ordinary, a Charge, or null.</summary>
         private Tincture earlyTincture;
 
-        private object ParseOrdinaryOrCharge(string placement)
+        private object ParseOrdinaryOrCharge()
         {
             earlyTincture = null;
             Tok countTok = null;
@@ -378,10 +475,14 @@ namespace ValheimHeraldryMod.Heraldry
             // "cross crosslet", "cross moline": a cross-shaped charge, not the ordinary
             if ((w == "cross" || w == "crosses") && Peek(1) != null && Lexicon.CrossCharges.Contains(Peek(1)))
             {
-                var c = new Charge { Count = count, Noun = "cross " + Peek(1), Placement = placement };
-                Take(WordStatus.NotDrawnYet, "charges are drawn in a later update");
-                Take(WordStatus.NotDrawnYet);
-                Mark(countTok, WordStatus.NotDrawnYet);
+                var c = new Charge { Count = count, Noun = Lexicon.CrossName(Peek(1)) };
+                c.Drawable = Lexicon.DrawnCharges.Contains(c.Noun);
+                var crossTok = Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, c.Drawable ? null : NeedsArt);
+                Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet);
+                if (count > 1 && w == "cross")
+                    Mark(crossTok, WordStatus.Passable, "use the plural for more than one: 'crosses " + toks[pos - 1].Text + "'");
+                if (Cur == "fitchy" || Cur == "fitchee")
+                    Take(WordStatus.NotDrawnYet, "the pointed foot isn't drawn yet; drawn as a plain " + c.Noun);
                 return FinishCharge(c, null);
             }
 
@@ -392,27 +493,35 @@ namespace ValheimHeraldryMod.Heraldry
             if ((w.EndsWith("'s") || w.EndsWith("s'")) && (Peek(1) == "head" || Peek(1) == "heads"))
             {
                 string animal = w.EndsWith("'s") ? w.Substring(0, w.Length - 2) : w.Substring(0, w.Length - 2);
-                var c = new Charge { Count = count, Noun = animal + "'s head", Placement = placement };
-                Take(WordStatus.NotDrawnYet, "charges are drawn in a later update");
+                var c = new Charge { Count = count, Noun = animal + "'s head" };
+                Take(WordStatus.NotDrawnYet, NeedsArt);
                 Take(WordStatus.NotDrawnYet);
-                Mark(countTok, WordStatus.NotDrawnYet);
                 return FinishCharge(c, null);
             }
 
             if (Lexicon.Charges.TryGetValue(w, out var ce) || (count > 1 && (w == "saltire" || w == "cross")))
             {
                 if (ce == null) ce = new Lexicon.ChargeEntry { Singular = w };
-                var nounTok = Take(WordStatus.NotDrawnYet, "charges are drawn in a later update");
-                Mark(countTok, WordStatus.NotDrawnYet);
-                if (count > 1 && !ce.Plural && Lexicon.Charges.ContainsKey(w))
+                bool drawable = Lexicon.DrawnCharges.Contains(ce.Singular);
+                var nounTok = Take(drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, drawable ? null : NeedsArt);
+                if (ce.PassableNote != null)
+                    Mark(nounTok, WordStatus.Passable, ce.PassableNote);
+                else if (count > 1 && !ce.Plural && Lexicon.Charges.ContainsKey(w))
                     Mark(nounTok, WordStatus.Passable, "use the plural for more than one");
                 else if (count == 1 && ce.Plural && countTok != null)
                     Mark(nounTok, WordStatus.Passable, "use the singular for one");
-                var c = new Charge { Count = count, Noun = ce.Singular, Placement = placement };
+                if (count > 20)
+                {
+                    Mark(countTok, WordStatus.Wrong, "at most twenty");
+                    count = 20;
+                }
+                var c = new Charge { Count = count, Noun = ce.Singular, Drawable = drawable };
                 if (Cur == "head" || Cur == "heads") // "three stags' heads" (the apostrophe is trimmed off)
                 {
                     Take(WordStatus.NotDrawnYet);
+                    Mark(nounTok, WordStatus.NotDrawnYet, NeedsArt);
                     c.Noun += "'s head";
+                    c.Drawable = false;
                 }
                 if (w == "rune" && Cur != null && !Lexicon.Tinctures.ContainsKey(Cur))
                     c.Noun = "rune " + Take(WordStatus.NotDrawnYet).Text; // "a rune Algiz sable"
@@ -437,6 +546,7 @@ namespace ValheimHeraldryMod.Heraldry
 
         private Ordinary FinishOrdinary(Lexicon.OrdinaryEntry oe, Tok countTok, int count, bool hadCount)
         {
+            lastCharge = null;
             var nounTok = Take(oe.PassableNote == null ? WordStatus.Correct : WordStatus.Passable, oe.PassableNote);
             var o = new Ordinary { Kind = oe.Kind, Count = count, Diminutive = oe.Diminutive };
 
@@ -457,8 +567,13 @@ namespace ValheimHeraldryMod.Heraldry
             }
             if (o.Kind == OrdinaryKind.Pile && o.Count > 3)
             {
-                Mark(countTok, WordStatus.Wrong, "at most three piles");
+                Mark(countTok, WordStatus.Wrong, "at most three piles; drawn as three");
                 o.Count = 3;
+            }
+            else if (o.Count > 9)
+            {
+                Mark(countTok, WordStatus.Wrong, "at most nine; drawn as nine");
+                o.Count = 9;
             }
 
             if ((o.Kind == OrdinaryKind.Bend) && Cur == "sinister")
@@ -473,10 +588,12 @@ namespace ValheimHeraldryMod.Heraldry
                 o.Kind = OrdinaryKind.BendSinister;
             }
 
+            ParseStyle(o.Style, beforeTincture: true);
             SkipFillers();
             if (earlyTincture != null)
             {
                 o.Tincture = earlyTincture;
+                ParseStyle(o.Style, beforeTincture: false);
                 result.Ordinaries.Add(o);
                 return o;
             }
@@ -493,18 +610,126 @@ namespace ValheimHeraldryMod.Heraldry
                 return o;
             }
             o.Tincture = t;
+            ParseStyle(o.Style, beforeTincture: false);
             result.Ordinaries.Add(o);
             return o;
         }
 
-        private Charge FinishCharge(Charge c, string impliedTincture)
+        /// <summary>
+        ///     "voided", "voided azure", "fimbriated or". Before the main tincture ("a cross voided gules") the
+        ///     next tincture is the object's own, so a bare "voided" shows what's beneath; after it ("a mullet or
+        ///     voided azure") a tincture is the colour inside.
+        /// </summary>
+        private void ParseStyle(Style style, bool beforeTincture)
         {
-            // Attitudes and directions
             while (!AtEnd)
             {
+                if (Cur == "voided")
+                {
+                    var vt = Take();
+                    style.Voided = true;
+                    if (!beforeTincture && Cur == "of" && Peek(1) == "the" && Peek(2) == "field")
+                    {
+                        Take(); Take(); Take(); // "voided of the field" = shows the field, the default
+                    }
+                    else if (!beforeTincture && TryTincture(out var inner, false, false))
+                        style.VoidTincture = inner;
+                    continue;
+                }
+                if (Cur == "fimbriated")
+                {
+                    var ft = Take();
+                    if (TryTincture(out var edge, false, false)) style.Fimbriation = edge;
+                    else Mark(ft, WordStatus.Wrong, "fimbriated in what? e.g. 'fimbriated argent'");
+                    continue;
+                }
+                break;
+            }
+        }
+
+        /// <summary>"two and one", "3 and 2 and 1": explicit rows. Returns false (consuming nothing) if it isn't one.</summary>
+        private bool TryRows(Charge c)
+        {
+            int start = pos;
+            var rows = new List<int>();
+            var first = CurTok;
+            while (!AtEnd && Cur != "a" && Cur != "an" && (Lexicon.Numbers.ContainsKey(Cur) || IsDigits(Cur)))
+            {
+                int n;
+                if (!Lexicon.Numbers.TryGetValue(Cur, out n) && !int.TryParse(Cur, NumberStyles.Integer, CultureInfo.InvariantCulture, out n)) break;
+                rows.Add(n);
+                pos++;
+                if (Cur == "and" && Peek(1) != null && Peek(1) != "a" && Peek(1) != "an" &&
+                    (Lexicon.Numbers.ContainsKey(Peek(1)) || IsDigits(Peek(1))))
+                    pos++;
+                else break;
+            }
+            // A number followed by a noun ("and two roundels") starts the next object, not a row list
+            bool nounNext = Cur != null && (Lexicon.Ordinaries.ContainsKey(Cur) || Lexicon.Charges.ContainsKey(Cur) || Cur == "cross" || Cur == "crosses");
+            if (rows.Count < 2 || nounNext)
+            {
+                pos = start;
+                return false;
+            }
+            for (int i = start; i < pos; i++) Mark(toks[i], WordStatus.Correct);
+            int sum = 0;
+            foreach (int r in rows) sum += r;
+            bool sane = true;
+            foreach (int r in rows) if (r < 1 || r > 6) sane = false;
+            if (sum != c.Count || !sane)
+            {
+                Mark(first, WordStatus.Wrong, sum != c.Count
+                    ? $"these rows add up to {sum}, but there are {c.Count}"
+                    : "rows of one to six");
+                return true;
+            }
+            c.Rows = rows.ToArray();
+            return true;
+        }
+
+        private Charge FinishCharge(Charge c, string impliedTincture)
+        {
+            if (pendingPlacement != Placement.None)
+            {
+                c.Placement = pendingPlacement;
+                pendingPlacement = Placement.None;
+            }
+
+            // Attitudes, directions, and mullet details
+            while (!AtEnd)
+            {
+                if (Cur == "of" && Peek(2) == "points" && Peek(1) != null && (Lexicon.Numbers.ContainsKey(Peek(1)) || IsDigits(Peek(1))))
+                {
+                    Take();
+                    var nt = CurTok;
+                    int n = TakeNumber();
+                    Take();
+                    if (c.Noun != "mullet")
+                        Mark(nt, WordStatus.Wrong, "only mullets have a number of points");
+                    else if (n < 4 || n > 8)
+                        Mark(nt, WordStatus.Wrong, "four to eight points");
+                    else c.Points = n;
+                    continue;
+                }
+                if (Cur == "pierced")
+                {
+                    var pt = Take();
+                    if (c.Noun == "mullet") c.Pierced = true;
+                    else Mark(pt, WordStatus.Unsupported, "only pierced mullets are drawn so far");
+                    continue;
+                }
+                if (Cur == "voided" || Cur == "fimbriated")
+                {
+                    ParseStyle(c.Style, beforeTincture: true);
+                    continue;
+                }
+                if (TryRows(c)) continue;
                 if (Lexicon.Attitudes.Contains(Cur))
                 {
-                    c.Attitudes.Add(Take(WordStatus.NotDrawnYet).Text);
+                    string a = Cur;
+                    bool drawnHere = c.Drawable && (a == "inverted" || a == "reversed" || a == "couped");
+                    c.Attitudes.Add(Take(drawnHere ? WordStatus.Correct : WordStatus.NotDrawnYet,
+                        drawnHere || !c.Drawable ? null : $"'{a}' isn't drawn for a {c.Noun}").Text);
                     continue;
                 }
                 if (Cur == "facing" && (Peek(1) == "left" || Peek(1) == "sinister"))
@@ -528,12 +753,19 @@ namespace ValheimHeraldryMod.Heraldry
             else
             {
                 SkipFillers();
+                var tincTok = CurTok;
                 if (!TryTincture(out var t, allowProper: true, allowCounterchanged: true))
                 {
                     result.Messages.Add($"'{c.Noun}' needs a tincture.");
                 }
+                else if (t.Kind == TinctureKind.Proper && Lexicon.IsGeometric(c.Noun))
+                    Mark(tincTok, WordStatus.Wrong, $"a {c.Noun} has no natural colour; give it a tincture");
                 else c.Tincture = t;
             }
+            ParseStyle(c.Style, beforeTincture: false);
+            TryRows(c);
+            if (c.Rows != null && c.Placement != Placement.None && c.Placement != Placement.Between && c.Placement != Placement.On)
+                c.Rows = null; // "in pale" wins over a row list
             if (c.Tincture != null && c.Tincture.Kind != TinctureKind.Proper)
             {
                 foreach (var o in awaitingTincture) o.Tincture = c.Tincture;
@@ -549,6 +781,7 @@ namespace ValheimHeraldryMod.Heraldry
             }
 
             result.Charges.Add(c);
+            lastCharge = c;
             return c;
         }
 
@@ -569,17 +802,19 @@ namespace ValheimHeraldryMod.Heraldry
 
             if (Lexicon.Tinctures.TryGetValue(w, out var e))
             {
-                Take(e.PassableNote == null ? WordStatus.Correct : WordStatus.Passable, e.PassableNote);
+                var tt = Take(e.PassableNote == null ? WordStatus.Correct : WordStatus.Passable, e.PassableNote);
                 t = new Tincture { Kind = e.Kind, Name = e.Canonical };
+                tt.Note.Tincture = t;
                 mentioned.Add(t);
                 return true;
             }
 
             if (w.Length == 7 && w[0] == '#' && IsHex(w.Substring(1)))
             {
-                Take();
+                var ht = Take();
                 int rgb = int.Parse(w.Substring(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
                 t = new Tincture { Kind = TinctureKind.Hex, Name = w, Hex = new Rgba((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb) };
+                ht.Note.Tincture = t;
                 mentioned.Add(t);
                 return true;
             }
@@ -631,6 +866,7 @@ namespace ValheimHeraldryMod.Heraldry
                 }
                 if (target == null) return false;
                 t = target;
+                which.Note.Tincture = target;
                 return true;
             }
 
@@ -675,14 +911,14 @@ namespace ValheimHeraldryMod.Heraldry
             return LineKind.Straight;
         }
 
+        /// <summary>Reads a number word or digits. Range checks are the caller's job (limits differ).</summary>
         private int TakeNumber()
         {
             var t = Take();
             if (Lexicon.Numbers.TryGetValue(t.Text, out int n)) return n;
-            int.TryParse(t.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out n);
-            if (n < 1 || n > 20)
+            if (!int.TryParse(t.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) || n < 1)
             {
-                Mark(t, WordStatus.Wrong, "between one and twenty");
+                Mark(t, WordStatus.Wrong, "not a usable number");
                 n = 1;
             }
             return n;

@@ -10,7 +10,7 @@ namespace ValheimHeraldryMod.Heraldry
     ///     the narrow side) so bands look even and wavy/engrailed edges aren't stretched.
     ///     Pure and deterministic: same text and size give the same pixels on every client.
     /// </summary>
-    public sealed class FieldRenderer
+    public sealed partial class FieldRenderer
     {
         // ---- Tunable proportions (fractions of the narrow side unless noted) ----
         public const float BandWidth = 0.25f;       // pale, fess, bend, cross, saltire, chevron, pall
@@ -36,17 +36,21 @@ namespace ValheimHeraldryMod.Heraldry
 
         /// <summary>Optional mask of the cloth's real outline (true = cloth), rows top to bottom.</summary>
         private readonly bool[] outline;
+        private readonly Arrangement arrangement;
         private float[] edgeDistance; // distance to the outline edge, for bordures
 
         /// <summary>
         ///     <paramref name="outline"/> is the banner's real cloth shape (e.g. the pointed bottom of the vanilla
-        ///     banner) at the same size; null means the whole rectangle. Only the bordure needs it so far.
+        ///     banner) at the same size; null means the whole rectangle.
+        ///     <paramref name="arrangement"/>: how charges without a placement use the surface (banners: Spread).
         /// </summary>
-        public static Rgba[] Render(Blazon blazon, int width, int height, bool[] outline = null) =>
-            new FieldRenderer(blazon, width, height, outline).Run();
+        public static Rgba[] Render(Blazon blazon, int width, int height, bool[] outline = null,
+            Arrangement arrangement = Arrangement.Spread) =>
+            new FieldRenderer(blazon, width, height, outline, arrangement).Run();
 
-        private FieldRenderer(Blazon b, int width, int height, bool[] outline)
+        private FieldRenderer(Blazon b, int width, int height, bool[] outline, Arrangement arrangement)
         {
+            this.arrangement = arrangement;
             blazon = b;
             w = width;
             h = height;
@@ -70,6 +74,7 @@ namespace ValheimHeraldryMod.Heraldry
 
             foreach (var o in blazon.Ordinaries)
                 if (o.Kind == OrdinaryKind.Bordure) { edgeDistance = DistanceToEdge(); break; }
+            LayoutCharges();
 
             // Pass 1: one sample per pixel centre
             for (int y = 0; y < h; y++)
@@ -122,12 +127,13 @@ namespace ValheimHeraldryMod.Heraldry
 
             foreach (var o in blazon.Ordinaries)
             {
-                if (o.Tincture == null || !InsideOrdinary(o, x, y)) continue;
-                if (o.Tincture.Kind == TinctureKind.Counterchanged)
-                    c = field.Tinctures.Count >= 2 ? Colour(field.Tinctures[1 - Math.Min(region, 1)], x, y) : Magenta;
-                else
-                    c = Colour(o.Tincture, x, y);
+                if (o.Tincture == null) continue;
+                c = o.Style.IsPlain
+                    ? (InsideOrdinary(o, x, y, 0) ? Tinct(o.Tincture, region, x, y) : c)
+                    : DrawOrdinary(o, c, region, x, y);
+                if (onCharges.TryGetValue(o, out var on)) c = DrawCharges(on, c, region, x, y);
             }
+            if (fieldCharges.Count > 0) c = DrawCharges(fieldCharges, c, region, x, y);
             return c;
         }
 
@@ -217,11 +223,15 @@ namespace ValheimHeraldryMod.Heraldry
 
         // ================================================================== ordinaries
 
-        private bool InsideOrdinary(Ordinary o, float x, float y)
+        /// <param name="grow">
+        ///     Pixels to widen the ordinary by (fimbriation), or narrow it by when negative (the inside of a voided one).
+        /// </param>
+        private bool InsideOrdinary(Ordinary o, float x, float y, float grow)
         {
             float full = BandWidth * unit * 0.5f;          // half widths
             float dim = DiminutiveWidth * unit * 0.5f;
-            float hw = o.Diminutive ? dim : full;
+            float hw0 = o.Diminutive ? dim : full;
+            float hw = hw0 + grow;
             int n = Math.Max(1, o.Count);
             var line = o.Line;
 
@@ -230,7 +240,7 @@ namespace ValheimHeraldryMod.Heraldry
                 case OrdinaryKind.Chief:
                 {
                     float edge = ChiefDepth * fh;
-                    return y < edge + Disp(line, x);
+                    return y < edge + grow + Disp(line, x) && (grow >= 0 || (y > -grow && x > -grow && x < w + grow));
                 }
                 case OrdinaryKind.Fess:
                     for (int i = 0; i < n; i++)
@@ -254,7 +264,7 @@ namespace ValheimHeraldryMod.Heraldry
                     float d = (xx * fh - y * w) / diag, s = (xx * w + y * fh) / diag;
                     for (int i = 0; i < n; i++)
                     {
-                        float offset = (i - (n - 1) * 0.5f) * hw * 4.2f;
+                        float offset = (i - (n - 1) * 0.5f) * hw0 * 4.2f;
                         if (Band(d - offset, s, hw, line, line)) return true;
                     }
                     return false;
@@ -271,7 +281,7 @@ namespace ValheimHeraldryMod.Heraldry
                 case OrdinaryKind.Chevron:
                     for (int i = 0; i < n; i++)
                     {
-                        float shift = n == 1 ? 0 : (i - (n - 1) * 0.5f) * ChevronVerticalStep(hw * 3.2f);
+                        float shift = n == 1 ? 0 : (i - (n - 1) * 0.5f) * ChevronVerticalStep(hw0 * 3.2f);
                         float d = ChevronSide(x, y, shift, LineKind.Straight);
                         if (Band(d, ChevronS(x, y), hw, line, line)) return true;
                     }
@@ -282,7 +292,7 @@ namespace ValheimHeraldryMod.Heraldry
                         float top = w * (i + 1f) / (n + 1f);
                         float halfTop = n == 1 ? w * 0.3f : w * 0.45f / n;
                         float tipX = w * 0.5f + (top - w * 0.5f) * 0.3f, tipY = h * 0.88f;
-                        if (InWedge(x, y, top - halfTop, top + halfTop, tipX, tipY, line)) return true;
+                        if (InWedge(x, y, top - halfTop, top + halfTop, tipX, tipY, line, grow)) return true;
                     }
                     return false;
                 case OrdinaryKind.Bordure:
@@ -292,7 +302,7 @@ namespace ValheimHeraldryMod.Heraldry
                     float m = edgeDistance[iy * w + ix];
                     // position along the edge, approximated by the angle around the centre
                     float s = (float)Math.Atan2(y - h * 0.5f, x - w * 0.5f) * (w + h) * 0.32f;
-                    return m < bw - Disp(line, s);
+                    return m < bw + grow - Disp(line, s) && (grow >= 0 || m > -grow);
                 }
                 case OrdinaryKind.Pall:
                 {
@@ -357,13 +367,13 @@ namespace ValheimHeraldryMod.Heraldry
             return perpendicular / Math.Max(0.2f, ny);
         }
 
-        private bool InWedge(float x, float y, float x0, float x1, float tipX, float tipY, LineKind line)
+        private bool InWedge(float x, float y, float x0, float x1, float tipX, float tipY, LineKind line, float grow)
         {
-            if (y < 0 || y > tipY) return false;
+            if (y < (grow < 0 ? -grow : 0) || y > tipY + grow * 2.5f) return false;
             float t = y / tipY;
             float left = x0 + (tipX - x0) * t, right = x1 + (tipX - x1) * t;
-            float d = Math.Min(x - left, right - x);
-            return d > -Disp(line, y);
+            float d = Math.Min(x - left, right - x) * 0.96f; // ~perpendicular distance to the slanted sides
+            return d + grow > -Disp(line, y);
         }
 
         /// <summary>

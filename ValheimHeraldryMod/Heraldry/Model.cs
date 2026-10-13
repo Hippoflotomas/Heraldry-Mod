@@ -36,6 +36,8 @@ namespace ValheimHeraldryMod.Heraldry
         public string Word;    // as typed
         public WordStatus Status;
         public string Message; // null when there is nothing to say
+        /// <summary>Set when this word names a tincture (for the editor's colour swatches).</summary>
+        public Tincture Tincture;
 
         public override string ToString() => $"{Word}:{Status}{(Message == null ? "" : " (" + Message + ")")}";
     }
@@ -72,6 +74,21 @@ namespace ValheimHeraldryMod.Heraldry
         public List<Tincture> Tinctures = new List<Tincture>();
     }
 
+    /// <summary>
+    ///     Voided (hollowed out, showing what's beneath or a given tincture) and fimbriated (a narrow edging in
+    ///     another tincture). Applies to ordinaries and charges alike.
+    /// </summary>
+    public sealed class Style
+    {
+        public bool Voided;
+        /// <summary>Tincture inside a voided shape; null = whatever lies beneath shows through.</summary>
+        public Tincture VoidTincture;
+        /// <summary>Tincture of the edging; null = not fimbriated.</summary>
+        public Tincture Fimbriation;
+
+        public bool IsPlain => !Voided && Fimbriation == null;
+    }
+
     public sealed class Ordinary
     {
         public OrdinaryKind Kind;
@@ -81,18 +98,32 @@ namespace ValheimHeraldryMod.Heraldry
         public bool Diminutive;
         public LineKind Line;
         public Tincture Tincture;
+        public Style Style = new Style();
         /// <summary>Charges placed on this ordinary ("on a chief azure three mullets or").</summary>
         public List<Charge> Charges = new List<Charge>();
     }
 
-    /// <summary>Parsed, not drawn yet (build order steps 5-6).</summary>
+    /// <summary>Where a group of charges goes. None = the default arrangement for the count.</summary>
+    public enum Placement { None, Pale, Fess, Bend, BendSinister, Saltire, Cross, Chief, Base, Orle, Between, On }
+
     public sealed class Charge
     {
         public int Count = 1;
-        public string Noun;          // canonical singular
+        public string Noun;          // canonical singular ("mullet", "cross crosslet", "stag's head")
         public List<string> Attitudes = new List<string>();
         public Tincture Tincture;
-        public string Placement;     // "in chief", "between", ...
+        public Placement Placement;
+        /// <summary>The ordinary these charges are "between" or "on".</summary>
+        public Ordinary Host;
+        /// <summary>Explicit rows ("two and one" = {2, 1}); null = default for the count.</summary>
+        public int[] Rows;
+        public Style Style = new Style();
+        /// <summary>Mullets: number of points (5 unless "of six points").</summary>
+        public int Points = 5;
+        /// <summary>Mullets: pierced (a round hole showing what's beneath).</summary>
+        public bool Pierced;
+        /// <summary>The renderer knows this shape (the geometric charges); others wait for charge art.</summary>
+        public bool Drawable;
     }
 
     public sealed class Blazon

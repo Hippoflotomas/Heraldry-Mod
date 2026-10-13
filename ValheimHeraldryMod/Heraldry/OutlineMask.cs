@@ -37,9 +37,30 @@ namespace ValheimHeraldryMod.Heraldry
                     if (a >= e && b >= e && c >= e) mask[y * w + x] = true;
                 }
             }
+            FillTopNotches(mask, w, h);
             int covered = 0;
             foreach (bool m in mask) if (m) covered++;
             return covered > w * h * 0.995f ? null : mask;
+        }
+
+        /// <summary>
+        ///     The vanilla banner's top edge has gaps between its hanging loops. Treat everything above the first
+        ///     full-width row as cloth, so a bordure runs straight along the top instead of dipping into each gap
+        ///     and the editor's preview shows a clean edge. (The real cloth still has its gaps; nothing is painted
+        ///     there that anyone can see.)
+        /// </summary>
+        public static void FillTopNotches(bool[] mask, int w, int h)
+        {
+            for (int y = 0; y < h / 4; y++)
+            {
+                int covered = 0;
+                for (int x = 0; x < w; x++) if (mask[y * w + x]) covered++;
+                if (covered < w * 0.98f) continue;
+                for (int yy = 0; yy < y; yy++)
+                    for (int x = 0; x < w; x++)
+                        mask[yy * w + x] = true;
+                return;
+            }
         }
     }
 }
