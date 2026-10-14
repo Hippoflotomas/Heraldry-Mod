@@ -65,6 +65,12 @@
 
   <ItemGroup>
     <!-- Plain twill-weave cloth normal map (from BannerShare). Read by Rendering/ClothNormal.cs. -->
+    <EmbeddedResource Include="Art\Tabard.hskin">
+      <LogicalName>ValheimHeraldryMod.Tabard.hskin</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Art\PaintBottle.hmesh">
+      <LogicalName>ValheimHeraldryMod.PaintBottle.hmesh</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Art\HeraldTable.hmesh">
       <LogicalName>ValheimHeraldryMod.HeraldTable.hmesh</LogicalName>
     </EmbeddedResource>

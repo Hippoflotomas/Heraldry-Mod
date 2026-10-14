@@ -15,9 +15,9 @@ namespace ValheimHeraldryMod.Shields
     [HarmonyPatch]
     internal static class ShieldPatches
     {
-        private const string ZdoLeft = "Heraldry_ShieldLeft";
-        private const string ZdoBack = "Heraldry_ShieldBack";
-        private const string ZdoItem = "Heraldry_Item";
+        private const string ZdoLeft = "ValheimHeraldryMod_ShieldLeft";
+        private const string ZdoBack = "ValheimHeraldryMod_ShieldBack";
+        private const string ZdoItem = "ValheimHeraldryMod_Item";
 
         private static readonly AccessTools.FieldRef<Humanoid, ItemDrop.ItemData> LeftItem = AccessTools.FieldRefAccess<Humanoid, ItemDrop.ItemData>("m_leftItem");
         private static readonly AccessTools.FieldRef<Humanoid, ItemDrop.ItemData> HiddenLeftItem = AccessTools.FieldRefAccess<Humanoid, ItemDrop.ItemData>("m_hiddenLeftItem");
@@ -53,7 +53,7 @@ namespace ValheimHeraldryMod.Shields
         {
             var prefab = ObjectDB.instance != null ? ObjectDB.instance.GetItemPrefab(hash) : null;
             var drop = prefab != null ? prefab.GetComponent<ItemDrop>() : null;
-            return drop != null && HeraldicShield.IsShield(drop.m_itemData) ? prefab.name : null;
+            return drop != null && HeraldicShield.IsShield(drop.m_itemData) && !HeraldryConfig.IsShieldExcluded(prefab.name) ? prefab.name : null;
         }
 
         private static void SetIfChanged(ZDO zdo, string key, string value)
@@ -122,6 +122,7 @@ namespace ValheimHeraldryMod.Shields
             var item = __instance.m_itemData;
             if (!HeraldicShield.IsShield(item)) return;
             string name = item.m_dropPrefab != null ? item.m_dropPrefab.name : Utils.GetPrefabName(__instance.gameObject);
+            if (HeraldryConfig.IsShieldExcluded(name)) return;
             HeraldicShield.Attach(__instance.gameObject, name, () => HeraldicShield.BlazonOf(__instance.m_itemData));
         }
 

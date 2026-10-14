@@ -360,6 +360,14 @@ namespace ValheimHeraldryMod.Rendering
             return best.Key;
         }
 
+        /// <summary>Every charge name in the packs in use, sorted (for basic mode's charge list); "pack:name" forms left out.</summary>
+        public List<string> Names()
+        {
+            var names = Active.ByName.Keys.Where(n => !n.Contains(":")).ToList();
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            return names;
+        }
+
         public string Suggest(string name)
         {
             string best = null;

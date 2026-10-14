@@ -12,8 +12,9 @@ namespace ValheimHeraldryMod.Banners
     public class HeraldicBanner : MonoBehaviour, Hoverable, Interactable, TextReceiver
     {
         /// <summary>ZDO key holding the raw blazon text.</summary>
-        public const string BlazonZdoKey = "Heraldry_Blazon";
-        public const int MaxBlazonLength = 300;
+        public const string BlazonZdoKey = "ValheimHeraldryMod_Blazon";
+        /// <summary>Hard ceiling on stored text, whatever the server allows (the server's limit is normally lower).</summary>
+        public const int MaxBlazonLength = 4000;
 
         // Set on the prefab by BannerRegistry; public fields are copied onto every instance.
         public string m_displayName = "Heraldic banner";
@@ -129,7 +130,8 @@ namespace ValheimHeraldryMod.Banners
             if (problemKey != hoverProblemFor)
             {
                 hoverProblemFor = problemKey;
-                hoverProblem = string.IsNullOrEmpty(text) ? null : Heraldry.BlazonParser.FirstProblem(Heraldry.BlazonParser.Parse(text));
+                var parsed = string.IsNullOrEmpty(text) ? null : Heraldry.BlazonParser.Parse(text);
+                hoverProblem = parsed == null ? null : BlazonLimits.Problem(text, parsed) ?? Heraldry.BlazonParser.FirstProblem(parsed);
             }
             if (hoverProblem != null)
                 shown += $"\n<color=#ff7060>{hoverProblem}</color>";

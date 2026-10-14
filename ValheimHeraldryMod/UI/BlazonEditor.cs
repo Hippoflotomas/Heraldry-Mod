@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Jotunn.Managers;
@@ -17,7 +18,7 @@ namespace ValheimHeraldryMod.UI
     ///     The text box's own text is invisible; an identical Text on top shows the words, and Unity's text
     ///     layout for that copy tells us where each word sits, so underlines and swatches line up exactly.
     /// </summary>
-    internal class BlazonEditor : MonoBehaviour
+    internal partial class BlazonEditor : MonoBehaviour
     {
         private static BlazonEditor instance;
 
@@ -48,6 +49,29 @@ namespace ValheimHeraldryMod.UI
 
         private IBlazonTarget target;
         private Text title, applyLabel, choiceLabel;
+
+        // ---- basic mode (dropdowns; Hippo 2026-10-13) ----
+        private const float BasicRowY = 96, BasicRowStep = 38, BasicRowH = 32;
+        private const float ColLabel = 0, ColMain = 90, Col1 = 316, Col2 = 472, Col3 = 628;
+        private const int DropdownFont = 14;
+        // Bottom of the window, from the bottom up: saved list, saved row, Apply/Cancel, problems; the blazon box
+        // takes everything above that (Hippo: buttons further down, text box as tall as possible).
+        private const float ScrollY = 606, ScrollH = 98, SavedRowY = 562, ButtonsY = 514;
+        private const float ProblemsH = 70, ProblemsY = ButtonsY - 8 - ProblemsH;
+        private const float AdvancedFieldY = 98, AdvancedFieldH = ProblemsY - 6 - AdvancedFieldY;
+        private const float BasicFieldY = BasicRowY + 5 * BasicRowStep + 2, BasicFieldH = ProblemsY - 6 - BasicFieldY;
+        private GameObject basicPanel;
+        private Text blazonLabel, basicTabLabel, advancedTabLabel;
+        private RectTransform fieldRect;
+        private bool basicMode;
+        private bool basicTouched;   // a dropdown was changed since opening (until then the existing arms are kept)
+        private bool syncingBasic;
+        private BasicBlazon basic = new BasicBlazon();
+        private readonly List<BasicBlazon.ChargeChoice> chargeChoices = new List<BasicBlazon.ChargeChoice>();
+        private Dropdown ddField, ddColour1, ddColour2, ddFieldLine;
+        private Dropdown ddOrdinary, ddOrdinaryColour, ddOrdinaryLine;
+        private Dropdown ddSecond, ddSecondColour, ddSecondLine;
+        private Dropdown ddCharge, ddStyle, ddChargeColour, ddCount, ddPlacement;
         private Image choiceIcon;
         private GameObject choiceRow, choiceList;
         private RectTransform choiceListContent;
@@ -130,13 +154,14 @@ namespace ValheimHeraldryMod.UI
             preview = pv.GetComponent<RawImage>();
 
             // ---- text box ----
-            Label("Blazon", RightX, 70, 300, 26, 18, Beige);
+            blazonLabel = Label("Blazon", RightX, 70, 300, 26, 18, Beige);
             var field = gui.CreateInputField(panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero,
-                InputField.ContentType.Standard, "e.g.  Azure, a bend or", FontSize, RightW, 250);
-            Place(field.GetComponent<RectTransform>(), RightX, 98, RightW, 250);
+                InputField.ContentType.Standard, "e.g.  Azure, a bend or", FontSize, RightW, AdvancedFieldH);
+            fieldRect = field.GetComponent<RectTransform>();
+            Place(fieldRect, RightX, AdvancedFieldY, RightW, AdvancedFieldH);
             input = field.GetComponent<InputField>();
             input.lineType = InputField.LineType.MultiLineSubmit;
-            input.characterLimit = HeraldicBanner.MaxBlazonLength;
+            input.characterLimit = HeraldicBanner.MaxBlazonLength; // the server limit is checked separately (BlazonLimits)
             input.customCaretColor = true;
             input.caretColor = Beige;
             input.caretWidth = 2;
@@ -180,33 +205,36 @@ namespace ValheimHeraldryMod.UI
             input.onValueChanged.AddListener(_ => OnTextChanged());
 
             // ---- problems ----
-            problems = Label("", RightX, 356, RightW, 120, 15, Color.white);
+            problems = Label("", RightX, ProblemsY, RightW, ProblemsH, 15, Color.white);
             problems.supportRichText = true;
             problems.alignment = TextAnchor.UpperLeft;
             problems.verticalOverflow = VerticalWrapMode.Truncate;
 
             // ---- buttons ----
-            applyLabel = AddButton("Apply", RightX, 480, 150, 40, Apply);
-            AddButton("Cancel", RightX + 160, 480, 150, 40, Hide);
-            status = Label("", RightX + 330, 488, RightW - 330, 28, 15, Beige);
+            applyLabel = AddButton("Apply", RightX, ButtonsY, 150, 40, Apply);
+            AddButton("Cancel", RightX + 160, ButtonsY, 150, 40, Hide);
+            status = Label("", RightX + 330, ButtonsY + 8, RightW - 330, 28, 15, Beige);
 
             // ---- saved blazons ----
-            Label("Saved blazons", RightX, 532, 300, 26, 18, Beige);
+            Label("Saved blazons", RightX, SavedRowY + 4, 300, 26, 18, Beige);
             var nameGo = gui.CreateInputField(panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero,
                 InputField.ContentType.Standard, "name", 16, 380, 34);
-            Place(nameGo.GetComponent<RectTransform>(), RightX + 170, 528, 380, 34);
+            Place(nameGo.GetComponent<RectTransform>(), RightX + 170, SavedRowY, 380, 34);
             saveName = nameGo.GetComponent<InputField>();
             saveName.characterLimit = 40;
-            AddButton("Save as", RightX + 560, 526, 160, 38, SaveCurrent);
+            AddButton("Save as", RightX + 560, SavedRowY - 2, 160, 38, SaveCurrent);
 
             var scroll = gui.CreateScrollView(panel.transform, false, true, 8f, 4f, ColorBlock.defaultColorBlock,
-                new Color(0, 0, 0, 0.3f), RightW, 130);
-            Place(scroll.GetComponent<RectTransform>(), RightX, 572, RightW, 130);
+                new Color(0, 0, 0, 0.3f), RightW, ScrollH);
+            Place(scroll.GetComponent<RectTransform>(), RightX, ScrollY, RightW, ScrollH);
             savedContent = scroll.transform.Find("Scroll View/Viewport/Content") as RectTransform;
             var vlg = savedContent.GetComponent<VerticalLayoutGroup>();
             vlg.spacing = 3; vlg.childControlHeight = true; vlg.childControlWidth = true;
             vlg.childForceExpandHeight = false; vlg.childForceExpandWidth = true;
             vlg.padding = new RectOffset(6, 6, 4, 4);
+
+            BuildBasic();
+            BuildCostPanel();
 
             // ---- the chooser's list (built when opened, drawn over everything but the tooltip) ----
             choiceList = gui.CreateScrollView(panel.transform, false, true, 8f, 4f, ColorBlock.defaultColorBlock,
@@ -250,14 +278,23 @@ namespace ValheimHeraldryMod.UI
             choiceList.SetActive(false);
             ShowChoice();
             input.text = target.GetText();
+            basic = new BasicBlazon();
+            basicTouched = false;
+            FillChargeList();
+            SyncBasic();
+            SetMode(HeraldryConfig.LastEditorMode != "advanced", false);
+            if (basicMode && input.text.Trim().Length == 0) input.text = basic.Build(); // start from the default arms
             saveName.text = "";
             RefreshSaved();
             status.text = target.Blocked ?? "";
             panel.SetActive(true);
             if (unblockAfterFrame >= 0) unblockAfterFrame = -1; // reopened before the release: keep the block
             else GUIManager.BlockInput(true);
-            input.ActivateInputField();
-            input.MoveTextEnd(false);
+            if (!basicMode)
+            {
+                input.ActivateInputField();
+                input.MoveTextEnd(false);
+            }
             OnTextChanged();
             renderAt = 0f; // render the preview straight away
         }
@@ -300,6 +337,19 @@ namespace ValheimHeraldryMod.UI
                 status.text = target.Blocked;
                 return;
             }
+            string limit = BlazonLimits.Problem(input.text.Trim());
+            if (limit != null)
+            {
+                status.text = $"<color=#f04a40>Not applied: {limit}.</color>";
+                return;
+            }
+            string unpaid = CostProblem();
+            if (unpaid != null)
+            {
+                status.text = $"<color=#f04a40>Not applied: {unpaid}.</color>";
+                return;
+            }
+            PayCost();
             string message = target.Apply(input.text.Trim());
             Hide();
             if (message != null) MessageHud.instance?.ShowMessage(MessageHud.MessageType.Center, message);
@@ -322,7 +372,7 @@ namespace ValheimHeraldryMod.UI
             if (choices == null) return;
             int i = Mathf.Max(0, target.Chosen);
             var icons = target.ChoiceIcons;
-            choiceLabel.text = choices.Count == 0 ? "<color=#a0a0a0>no shields in your inventory</color>" : choices[i];
+            choiceLabel.text = choices.Count == 0 ? "<color=#a0a0a0>nothing to paint in your inventory</color>" : choices[i];
             choiceIcon.sprite = choices.Count > 0 && icons != null && i < icons.Count ? icons[i] : null;
             choiceIcon.enabled = choiceIcon.sprite != null;
         }
@@ -372,6 +422,202 @@ namespace ValheimHeraldryMod.UI
             return img;
         }
 
+        // ================================================================== basic mode
+
+        private void BuildBasic()
+        {
+            var gui = GUIManager.Instance;
+            // Tabs, top right
+            basicTabLabel = AddButton("Basic", RightX + 390, 12, 160, 36, () => SetMode(true, true));
+            advancedTabLabel = AddButton("Advanced", RightX + 560, 12, 160, 36, () => SetMode(false, true));
+
+            basicPanel = new GameObject("Basic", typeof(RectTransform));
+            basicPanel.transform.SetParent(panel.transform, false);
+            Place(basicPanel.GetComponent<RectTransform>(), 0, 0, PanelW, PanelH);
+            var t = basicPanel.transform;
+
+            float Row(int r) => BasicRowY + r * BasicRowStep;
+            void RowLabel(int r, string text) => Label(text, RightX + ColLabel, Row(r) + 5, ColMain - 6, BasicRowH, 17, Beige, t);
+
+            RowLabel(0, "Field");
+            ddField = MakeDropdown(t, ColMain, Row(0), Col1 - ColMain - 6, BasicBlazon.Fields, i => { basic.Field = BasicBlazon.Fields[i].Value; });
+            ddColour1 = MakeDropdown(t, Col1, Row(0), Col2 - Col1 - 6, BasicBlazon.Colours, i => { basic.Colour1 = BasicBlazon.Colours[i].Value; });
+            ddColour2 = MakeDropdown(t, Col2, Row(0), Col3 - Col2 - 6, BasicBlazon.Colours, i => { basic.Colour2 = BasicBlazon.Colours[i].Value; });
+            ddFieldLine = MakeDropdown(t, Col3, Row(0), RightW - Col3, BasicBlazon.Lines, i => { basic.FieldLine = BasicBlazon.Lines[i].Value; });
+
+            RowLabel(1, "Ordinary");
+            ddOrdinary = MakeDropdown(t, ColMain, Row(1), Col1 - ColMain - 6, BasicBlazon.Ordinaries, i => { basic.Ordinary = BasicBlazon.Ordinaries[i].Value; });
+            ddOrdinaryColour = MakeDropdown(t, Col1, Row(1), Col2 - Col1 - 6, BasicBlazon.Colours, i => { basic.OrdinaryColour = BasicBlazon.Colours[i].Value; });
+            ddOrdinaryLine = MakeDropdown(t, Col3, Row(1), RightW - Col3, BasicBlazon.Lines, i => { basic.OrdinaryLine = BasicBlazon.Lines[i].Value; });
+
+            RowLabel(2, "Also");
+            ddSecond = MakeDropdown(t, ColMain, Row(2), Col1 - ColMain - 6, BasicBlazon.SecondOrdinaries, i => { basic.Second = BasicBlazon.SecondOrdinaries[i].Value; });
+            ddSecondColour = MakeDropdown(t, Col1, Row(2), Col2 - Col1 - 6, BasicBlazon.Colours, i => { basic.SecondColour = BasicBlazon.Colours[i].Value; });
+            ddSecondLine = MakeDropdown(t, Col3, Row(2), RightW - Col3, BasicBlazon.Lines, i => { basic.SecondLine = BasicBlazon.Lines[i].Value; });
+
+            RowLabel(3, "Charge");
+            ddCharge = MakeDropdown(t, ColMain, Row(3), Col1 - ColMain - 6, new BasicBlazon.Option[0], i =>
+            {
+                if (i < 0 || i >= chargeChoices.Count || chargeChoices[i].IsDivider) return false;
+                basic.Charge = chargeChoices[i];
+                return true;
+            });
+            ddStyle = MakeDropdown(t, Col1, Row(3), Col2 - Col1 - 6, BasicBlazon.Styles, i => { basic.Style = BasicBlazon.Styles[i].Value; });
+            ddChargeColour = MakeDropdown(t, Col2, Row(3), Col3 - Col2 - 6, BasicBlazon.Colours, i => { basic.ChargeColour = BasicBlazon.Colours[i].Value; });
+            ddCount = MakeDropdown(t, Col3, Row(3), RightW - Col3, BasicBlazon.Counts, i => { basic.Count = i + 1; });
+
+            RowLabel(4, "Where");
+            ddPlacement = MakeDropdown(t, ColMain, Row(4), Col2 - ColMain - 6, BasicBlazon.Placements, i =>
+            {
+                if (!basic.PlacementAllowed(BasicBlazon.Placements[i].Value)) return false;
+                basic.Placement = BasicBlazon.Placements[i].Value;
+                return true;
+            });
+        }
+
+        /// <summary>A dropdown in the basic panel. <paramref name="set"/> stores the choice (dividers are refused by the caller).</summary>
+        private Dropdown MakeDropdown(Transform parent, float x, float y, float w, BasicBlazon.Option[] options, System.Action<int> set) =>
+            MakeDropdown(parent, x, y, w, options, i =>
+            {
+                if (options[i].IsDivider) return false;
+                set(i);
+                return true;
+            });
+
+        private Dropdown MakeDropdown(Transform parent, float x, float y, float w, BasicBlazon.Option[] options, System.Func<int, bool> set)
+        {
+            var go = GUIManager.Instance.CreateDropDown(parent, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero, DropdownFont, w, BasicRowH);
+            Place(go.GetComponent<RectTransform>(), RightX + x, y, w, BasicRowH);
+            go.AddComponent<CanvasGroup>();
+            var dd = go.GetComponent<Dropdown>();
+            dd.ClearOptions();
+            dd.AddOptions(options.Select(o => o.Label).ToList());
+            // One line in the box, never wrapped onto two (the labels are kept short enough to fit)
+            if (dd.captionText != null)
+            {
+                dd.captionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                dd.captionText.resizeTextForBestFit = false;
+            }
+            dd.onValueChanged.AddListener(i =>
+            {
+                if (syncingBasic) return;
+                bool taken = set(i);
+                basicTouched = true;
+                if (taken)
+                {
+                    basic.Tidy();
+                    input.text = basic.Build(); // the live blazon line; parsing, preview and Apply follow from it
+                }
+                SyncBasic(); // also puts a refused choice (a divider, "on" with no ordinary) back
+            });
+            return dd;
+        }
+
+        /// <summary>Built-in charges, then the charge packs in use (they change with the server).</summary>
+        private void FillChargeList()
+        {
+            chargeChoices.Clear();
+            chargeChoices.AddRange(BasicBlazon.BuiltInCharges);
+            var packs = ChargePacks.Instance.Names();
+            if (packs.Count > 0)
+            {
+                chargeChoices.Add(BasicBlazon.PackDivider);
+                foreach (var name in packs) chargeChoices.Add(BasicBlazon.PackCharge(name));
+            }
+            ddCharge.ClearOptions();
+            ddCharge.AddOptions(chargeChoices.Select(c => c.Label).ToList());
+        }
+
+        /// <summary>Shows the model's choices and greys out what doesn't apply.</summary>
+        private void SyncBasic()
+        {
+            syncingBasic = true;
+            try
+            {
+                Set(ddField, System.Array.FindIndex(BasicBlazon.Fields, o => o.Value == basic.Field), true);
+                Set(ddColour1, ColourIndex(basic.Colour1), true);
+                Set(ddColour2, ColourIndex(basic.Colour2), basic.FieldHasSecondColour);
+                Set(ddFieldLine, LineIndex(basic.FieldLine), basic.FieldHasLine);
+
+                Set(ddOrdinary, System.Array.FindIndex(BasicBlazon.Ordinaries, o => o.Value == basic.Ordinary), true);
+                Set(ddOrdinaryColour, ColourIndex(basic.OrdinaryColour), basic.HasOrdinary);
+                Set(ddOrdinaryLine, LineIndex(basic.OrdinaryLine), basic.HasOrdinary);
+
+                Set(ddSecond, System.Array.FindIndex(BasicBlazon.SecondOrdinaries, o => o.Value == basic.Second), true);
+                Set(ddSecondColour, ColourIndex(basic.SecondColour), basic.HasSecond);
+                Set(ddSecondLine, LineIndex(basic.SecondLine), basic.HasSecond);
+
+                Set(ddCharge, Mathf.Max(0, chargeChoices.IndexOf(basic.Charge)), true);
+                Set(ddStyle, System.Array.FindIndex(BasicBlazon.Styles, o => o.Value == basic.Style), basic.HasCharge);
+                Set(ddChargeColour, ColourIndex(basic.ChargeColour), basic.ChargeHasColour);
+                Set(ddCount, basic.Count - 1, basic.HasCharge && !basic.Charge.OnlyOne);
+                Set(ddPlacement, System.Array.FindIndex(BasicBlazon.Placements, o => o.Value == basic.Placement), basic.HasCharge);
+            }
+            finally
+            {
+                syncingBasic = false;
+            }
+        }
+
+        /// <summary>
+        ///     When the arms in the box didn't come from the dropdowns (written in Advanced, or already on the item),
+        ///     the dropdowns are dimmed: they don't describe these arms, and touching one replaces them.
+        /// </summary>
+        private void ShowBasicStale()
+        {
+            string current = (input.text ?? "").Trim();
+            bool stale = current.Length > 0 && current != basic.Build();
+            var group = basicPanel.GetComponent<CanvasGroup>();
+            if (group == null) group = basicPanel.AddComponent<CanvasGroup>();
+            group.alpha = stale ? 0.45f : 1f;
+            const string Note = "Changing a dropdown replaces these arms.";
+            if (stale && status.text.Length == 0) status.text = Note;
+            else if (!stale && status.text == Note) status.text = "";
+        }
+
+        private static int ColourIndex(string value) => Mathf.Max(0, System.Array.FindIndex(BasicBlazon.Colours, o => o.Value == value));
+        private static int LineIndex(string value) => Mathf.Max(0, System.Array.FindIndex(BasicBlazon.Lines, o => o.Value == value));
+
+        private static void Set(Dropdown dd, int index, bool enabled)
+        {
+            dd.SetValueWithoutNotify(Mathf.Max(0, index));
+            dd.RefreshShownValue();
+            dd.interactable = enabled;
+            dd.GetComponent<CanvasGroup>().alpha = enabled ? 1f : 0.35f;
+        }
+
+        /// <summary>
+        ///     Basic: the dropdowns, with the blazon they make shown read-only in a short text box below (same
+        ///     underlines, swatches and tooltips as advanced mode, so it teaches the words). Advanced: the text box.
+        /// </summary>
+        private void SetMode(bool basicOn, bool remember)
+        {
+            basicMode = basicOn;
+            if (remember) HeraldryConfig.LastEditorMode = basicOn ? "basic" : "advanced";
+            basicPanel.SetActive(basicOn);
+            input.readOnly = basicOn;
+            if (basicOn)
+            {
+                Place(fieldRect, RightX, BasicFieldY, RightW, BasicFieldH);
+                Place(blazonLabel.rectTransform, RightX + Col2, BasicRowY + 4 * BasicRowStep + 5, RightW - Col2, BasicRowH);
+                blazonLabel.text = "The blazon this makes:";
+                input.DeactivateInputField();
+                ShowBasicStale();
+            }
+            else
+            {
+                Place(fieldRect, RightX, AdvancedFieldY, RightW, AdvancedFieldH);
+                Place(blazonLabel.rectTransform, RightX, 70, 300, 26);
+                blazonLabel.text = "Blazon";
+                if (status.text == "Changing a dropdown replaces these arms.") status.text = "";
+                input.ActivateInputField();
+                input.MoveTextEnd(false);
+            }
+            basicTabLabel.color = basicOn ? GUIManager.Instance.ValheimOrange : Color.white;
+            advancedTabLabel.color = basicOn ? Color.white : GUIManager.Instance.ValheimOrange;
+            OnTextChanged(); // re-lay the underlines and swatches for the box's new size
+        }
+
         // ================================================================== per frame
 
         private void Update()
@@ -414,6 +660,8 @@ namespace ValheimHeraldryMod.UI
             parsed = BlazonParser.Parse(text);
             LayoutMarks(text);
             ShowProblems();
+            RefreshCost();
+            if (basicMode && basic != null) ShowBasicStale();
             renderAt = Time.unscaledTime + 0.25f; // re-render the preview once typing pauses
         }
 
@@ -559,6 +807,8 @@ namespace ValheimHeraldryMod.UI
             var sb = new StringBuilder();
             int lines = 0;
             bool later = false;
+            string limit = BlazonLimits.Problem((input.text ?? "").Trim(), parsed);
+            if (limit != null) { sb.Append($"<color=#f04a40>{char.ToUpper(limit[0])}{limit.Substring(1)}.</color>\n"); lines++; }
             foreach (var w in parsed.Words)
             {
                 if (w.Status == WordStatus.NotDrawnYet) { later = true; continue; }
@@ -570,7 +820,7 @@ namespace ValheimHeraldryMod.UI
                 if (lines++ < 6) sb.Append($"<color=#f04a40>{m}</color>\n");
             if (later)
                 sb.Append("<color=#a0a0a0>Charges are understood but not drawn yet.</color>\n");
-            if (sb.Length == 0 && (input.text ?? "").Trim().Length > 0)
+            if (sb.Length == 0 && limit == null && (input.text ?? "").Trim().Length > 0)
                 sb.Append(parsed.IsValid ? "<color=#a8d070>Good blazon.</color>" : "");
             problems.text = sb.ToString();
         }
@@ -653,6 +903,7 @@ namespace ValheimHeraldryMod.UI
                 load.AddComponent<LayoutElement>().flexibleWidth = 1;
                 load.GetComponent<Button>().onClick.AddListener(() =>
                 {
+                    if (basicMode) SetMode(false, true); // saved arms go to the text box; basic can't show them
                     input.text = s.blazon; // loads into the box; Apply still needed
                     status.text = $"Loaded '{s.name}'. Apply to paint it.";
                 });

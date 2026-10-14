@@ -64,6 +64,7 @@ namespace ValheimHeraldryMod.Shields
 
         public static Entry Acquire(ShieldFace face, string normalisedText)
         {
+            normalisedText = BlazonLimits.Drawable(normalisedText);
             string key = face.Key + "|" + normalisedText + (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
             if (!Entries.TryGetValue(key, out var entry))
             {

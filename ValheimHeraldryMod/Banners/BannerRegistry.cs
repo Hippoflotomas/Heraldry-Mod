@@ -28,7 +28,7 @@ namespace ValheimHeraldryMod.Banners
             // Fires every time the main menu loads; Jotunn keeps our pieces alive, so register once.
             PrefabManager.OnVanillaPrefabsAvailable -= Register;
 
-            AddBanner("Heraldry_BannerHanging", VanillaHangingBanner, "Heraldic banner (hanging)",
+            AddBanner("ValheimHeraldryMod_BannerHanging", VanillaHangingBanner, "Heraldic banner (hanging)",
                 "A plain cloth banner. Write a blazon on it and every viewer sees the arms painted.");
         }
 

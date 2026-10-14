@@ -16,8 +16,8 @@ namespace ValheimHeraldryMod.Station
     /// </summary>
     internal static class TableRegistry
     {
-        public const string PrefabName = "Heraldry_HeraldTable";
-        public const string StationName = "$piece_heraldry_table";
+        public const string PrefabName = "ValheimHeraldryMod_HeraldsTable";
+        public const string StationName = "$ValheimHeraldryMod_HeraldsTable";
         private const string ModelResource = "ValheimHeraldryMod.HeraldTable.hmesh";
 
         public static void Init()
@@ -25,8 +25,8 @@ namespace ValheimHeraldryMod.Station
             PrefabManager.OnVanillaPrefabsAvailable += Register;
             LocalizationManager.Instance.GetLocalization().AddTranslation("English", new Dictionary<string, string>
             {
-                { "piece_heraldry_table", "Herald's table" },
-                { "piece_heraldry_table_description", "Paint your shields with arms (Shift+E), and craft heraldic gear." },
+                { "ValheimHeraldryMod_HeraldsTable", "Herald's table" },
+                { "ValheimHeraldryMod_HeraldsTable_description", "Paint your shields with arms (Shift+E), and craft heraldic gear." },
             });
         }
 
@@ -103,7 +103,7 @@ namespace ValheimHeraldryMod.Station
             station.m_name = StationName;
             station.m_showBasicRecipies = false; // only heraldic recipes here
             station.m_canRepair = false;         // shields repair at the forge or workbench, as before
-            station.m_craftRequireRoof = false;
+            station.m_craftRequireRoof = true;   // like the workbench (Hippo, 2026-10-13)
 
             var table = prefab.AddComponent<HeraldTable>();
             if (display != null)
@@ -114,12 +114,12 @@ namespace ValheimHeraldryMod.Station
 
             var piece = prefab.GetComponent<Piece>();
             piece.m_name = StationName;
-            piece.m_description = "$piece_heraldry_table_description";
+            piece.m_description = "$ValheimHeraldryMod_HeraldsTable_description";
 
             var config = new PieceConfig
             {
                 Name = StationName,
-                Description = "$piece_heraldry_table_description",
+                Description = "$ValheimHeraldryMod_HeraldsTable_description",
                 PieceTable = PieceTables.Hammer,
                 Category = BannerRegistry.Category,
                 CraftingStation = CraftingStations.Workbench,
@@ -143,8 +143,12 @@ namespace ValheimHeraldryMod.Station
         }
 
         /// <summary>Vanilla materials for the model's slots: wood from the wood wall, metal from the iron wall.</summary>
-        private static Dictionary<string, Material> VanillaMaterials()
+        private static Dictionary<string, Material> materialCache;
+
+        /// <summary>Also used by the paint bottles (glass), so built once.</summary>
+        internal static Dictionary<string, Material> VanillaMaterials()
         {
+            if (materialCache != null && materialCache.Values.All(m => m != null)) return materialCache;
             // By name: a piece's first renderer is often its snow layer (woodwall's is "snow_flat", whose shader
             // pushes the surface outwards and paints it white; that was the first test's spiky white table).
             Material From(string prefabName, string materialName)
@@ -176,6 +180,7 @@ namespace ValheimHeraldryMod.Station
             display.mainTextureScale = Vector2.one;   // the wall tiles its planks; the arms must fit the face once
             display.mainTextureOffset = Vector2.zero;
             result["Display"] = display;
+            materialCache = result;
             return result;
         }
 

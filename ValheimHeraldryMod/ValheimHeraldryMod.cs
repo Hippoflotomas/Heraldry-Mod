@@ -33,10 +33,12 @@ namespace ValheimHeraldryMod
             Heraldry.Lexicon.Packs = Rendering.ChargePacks.Instance;
             Banners.BannerRegistry.Init();
             Station.TableRegistry.Init();
+            Tabards.TabardItem.Init();
+            Paints.PaintItems.Init();
 
             // Patches applied one class at a time, so if a game update breaks one, only that feature is lost
             var harmony = new HarmonyLib.Harmony(PluginGUID);
-            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch) })
+            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch), typeof(Tabards.TabardEquip), typeof(Tabards.TabardVisuals), typeof(Rendering.ItemIcons) })
             {
                 try
                 {
@@ -57,6 +59,8 @@ namespace ValheimHeraldryMod
             // Upload banner textures that finished rendering on worker threads
             Rendering.BlazonTextureCache.Pump();
             Shields.ShieldTextures.Pump();
+            Tabards.TabardTextures.Pump();
+            Rendering.ItemIcons.Pump();
             // Notice joining and leaving other people's servers (their charge packs)
             Rendering.PackSync.Update();
         }

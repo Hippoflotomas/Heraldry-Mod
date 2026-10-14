@@ -28,6 +28,9 @@ namespace ValheimHeraldryMod.UI
         /// <summary>Why painting can't happen right now (no shields...), or null.</summary>
         string Blocked { get; }
 
+        /// <summary>Changing the arms here costs paint (when paint costs are on at all).</summary>
+        bool CostsPaint { get; }
+
         string GetText();
         /// <summary>Applies the text; returns a message for the status line, or null.</summary>
         string Apply(string text);
@@ -52,6 +55,7 @@ namespace ValheimHeraldryMod.UI
         public int Chosen => -1;
         public string Choose(int index) => GetText();
         public string Blocked => null;
+        public bool CostsPaint => HeraldryConfig.PaintCostsOnBanners;
         public string GetText() => banner.GetText();
 
         public string Apply(string text)

@@ -602,6 +602,20 @@ namespace ValheimHeraldryMod.Heraldry
                 return FinishCharge(c, null);
             }
 
+            // Plural heads whose animal isn't a charge noun of its own: "three greydwarfs' heads", "two loxes' heads"
+            // (the apostrophe is trimmed off, so it arrives as "greydwarfs heads")
+            if (!Lexicon.Charges.ContainsKey(w) && Lexicon.HeadIcons.ContainsKey(w) && (Peek(1) == "head" || Peek(1) == "heads"))
+            {
+                string animal = w;
+                if (w.EndsWith("es") && Lexicon.HeadIcons.ContainsKey(w.Substring(0, w.Length - 2))) animal = w.Substring(0, w.Length - 2);
+                else if (w.EndsWith("s") && Lexicon.HeadIcons.ContainsKey(w.Substring(0, w.Length - 1))) animal = w.Substring(0, w.Length - 1);
+                var c = new Charge { Count = count, Noun = animal + "'s head" };
+                SetHeadArt(c, w, animal);
+                Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, c.Drawable ? null : NeedsArt);
+                Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet);
+                return FinishCharge(c, null);
+            }
+
             if (Lexicon.Charges.TryGetValue(w, out var ce) || (count > 1 && (w == "saltire" || w == "cross")))
             {
                 if (ce == null) ce = new Lexicon.ChargeEntry { Singular = w };

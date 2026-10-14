@@ -19,7 +19,7 @@ namespace ValheimHeraldryMod.Rendering
     /// </summary>
     internal static class PackSync
     {
-        private const string RpcName = "Heraldry_ChargePacks";
+        private const string RpcName = "ValheimHeraldryMod_ChargePacks";
         private const byte Hello = 1, OfferMsg = 2, Request = 3, PackMsg = 4;
         private const int ProtocolVersion = 1;
 

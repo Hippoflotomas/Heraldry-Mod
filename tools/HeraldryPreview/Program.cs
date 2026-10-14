@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using ValheimHeraldryMod.Heraldry;
@@ -10,6 +10,28 @@ static class Program
         string mode = args.Length > 0 ? args[0] : "parse";
         LoadIcons();
         LoadPacks();
+        if (mode == "basic")
+        {
+            // basic: every basic-mode combination (sampled) must parse with no Wrong words and within the default limits
+            BasicCheck();
+            return;
+        }
+        if (mode == "paint")
+        {
+            // paint <perTincture> <maxTotal> <blazon...>: the paint the herald's table asks for
+            int per = int.Parse(args[1]), max = int.Parse(args[2]);
+            string text = string.Join(" ", args.Skip(3));
+            var cost = PaintCost.For(BlazonParser.Parse(text), per, max);
+            Console.WriteLine($"{text}  =>  " + (cost.Count == 0 ? "free" : string.Join(", ", cost.Select(kv => kv.Value + " " + kv.Key))));
+            return;
+        }
+        if (mode == "tabard")
+        {
+            // tabard <list> <outdir> <Tabard.hskin>: the tabard texture as the mod paints it (front: arms on the
+            // chest; back: field and ordinaries only), 1024 x 1024, UV layout as in TabardUVLayout.png
+            Tabard(args[1], args[2], args[3]);
+            return;
+        }
         if (mode == "render")
         {
             // render <list> <outdir> <width> <height>
@@ -182,4 +204,115 @@ static class Program
 
     static string Describe(Field f) => f == null ? "null" :
         $"{(f.Partition != PartitionKind.None ? "per " + f.Partition : f.Variation != VariationKind.None ? f.Variation + " of " + f.Count : "plain")} {f.Line} [{string.Join(",", f.Tinctures)}]";
+
+    static void Tabard(string list, string outDir, string hskin)
+    {
+        const int Size = 1024;
+        float[] uv; int[] idx;
+        using (var r = new BinaryReader(File.OpenRead(hskin)))
+        {
+            r.ReadChars(4); r.ReadInt32();
+            int n = r.ReadInt32();
+            for (int k = 0; k < n * 6; k++) r.ReadSingle();
+            uv = new float[n * 2];
+            for (int k = 0; k < n * 2; k++) uv[k] = r.ReadSingle();
+            idx = new int[r.ReadInt32()];
+            for (int k = 0; k < idx.Length; k++) idx[k] = r.ReadInt32();
+        }
+        Directory.CreateDirectory(outDir);
+        int i = 0;
+        foreach (var line in File.ReadAllLines(list))
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("//")) continue;
+            var px = new Rgba[Size * Size];
+            for (int k = 0; k < px.Length; k++) px[k] = new Rgba(214, 204, 178);
+            var front = BlazonParser.Parse(line);
+            var back = BlazonParser.Parse(line);
+            back.Charges.Clear();
+            foreach (var o in back.Ordinaries) o.Charges.Clear();
+            Panel(px, Size, uv, idx, true, front);
+            Panel(px, Size, uv, idx, false, back);
+            Png.Save(Path.Combine(outDir, $"{i:D2}.png"), px, Size, Size);
+            Console.WriteLine($"{i:D2}  {line}");
+            i++;
+        }
+    }
+
+    // Same as TabardTextures.Paint, with image rows top down (v = 1 at the top)
+    static void Panel(Rgba[] dst, int size, float[] uv, int[] idx, bool front, Blazon b)
+    {
+        var tris = new System.Collections.Generic.List<int>();
+        float minU = 1, minV = 1, maxU = 0, maxV = 0;
+        for (int t = 0; t + 2 < idx.Length; t += 3)
+        {
+            float cu = (uv[idx[t] * 2] + uv[idx[t + 1] * 2] + uv[idx[t + 2] * 2]) / 3f;
+            if ((cu < 0.5f) != front) continue;
+            for (int k = 0; k < 3; k++)
+            {
+                int v = idx[t + k];
+                minU = Math.Min(minU, uv[v * 2]); maxU = Math.Max(maxU, uv[v * 2]);
+                minV = Math.Min(minV, uv[v * 2 + 1]); maxV = Math.Max(maxV, uv[v * 2 + 1]);
+                tris.Add(v);
+            }
+        }
+        var outline = new float[tris.Count * 2]; var ot = new int[tris.Count];
+        for (int k = 0; k < tris.Count; k++)
+        {
+            outline[k * 2] = (uv[tris[k] * 2] - minU) / (maxU - minU);
+            outline[k * 2 + 1] = (uv[tris[k] * 2 + 1] - minV) / (maxV - minV);
+            ot[k] = k;
+        }
+        int x0 = (int)Math.Floor(minU * size), y0 = (int)Math.Floor(minV * size);
+        int x1 = (int)Math.Ceiling(maxU * size), y1 = (int)Math.Ceiling(maxV * size);
+        int pw = x1 - x0, ph = y1 - y0;
+        var mask = OutlineMask.FromTriangles(outline, ot, pw, ph);
+        var art = FieldRenderer.Render(b, pw, ph, mask, FieldRenderer.Arrangement.Chest);
+        for (int r = 0; r < ph; r++)
+        {
+            int ty = y1 - 1 - r, row = size - 1 - ty;
+            for (int x = 0; x < pw; x++) dst[row * size + x0 + x] = art[r * pw + x];
+        }
+    }
+
+    static void BasicCheck()
+    {
+        var b = new BasicBlazon();
+        int n = 0, bad = 0;
+        var rnd = new Random(1);
+        var charges = BasicBlazon.BuiltInCharges.Where(c => !c.IsDivider).ToList();
+        var colours = BasicBlazon.Colours.Where(c => !c.IsDivider).Select(c => c.Value).ToList();
+        void Check()
+        {
+            string text = b.Build();
+            var p = BlazonParser.Parse(text);
+            n++;
+            var wrong = p.Words.Where(w => w.Status == WordStatus.Wrong || w.Status == WordStatus.Passable || w.Status == WordStatus.Unsupported).ToList();
+            if (!p.IsValid || wrong.Count > 0 || p.Messages.Count > 0 || p.Elements > 25)
+            {
+                bad++;
+                if (bad <= 4000) Console.WriteLine($"BAD {text}  ->  " + string.Join("; ", wrong.Select(w => $"{w.Word}: {w.Status} {w.Message}")) + " " + string.Join("; ", p.Messages) + $" el={p.Elements}");
+            }
+            else if (n % 400 == 0) Console.WriteLine("ok  " + text);
+        }
+        // Every field x line x two colours
+        foreach (var f in BasicBlazon.Fields) foreach (var l in BasicBlazon.Lines) foreach (var c in new[] { "azure", "ermine", "or" })
+        { b = new BasicBlazon { Field = f.Value, FieldLine = l.Value, Colour1 = c, Colour2 = "gules" }; Check(); }
+        // Every ordinary x line x second x placement x charge (count/style varied)
+        foreach (var o in BasicBlazon.Ordinaries) foreach (var l in BasicBlazon.Lines) foreach (var s2 in BasicBlazon.SecondOrdinaries)
+        foreach (var pl in BasicBlazon.Placements) foreach (var ch in charges)
+        {
+            b = new BasicBlazon
+            {
+                Field = BasicBlazon.Fields[rnd.Next(BasicBlazon.Fields.Length)].Value, Colour1 = colours[rnd.Next(colours.Count)], Colour2 = colours[rnd.Next(colours.Count)],
+                Ordinary = o.Value, OrdinaryLine = l.Value, OrdinaryColour = colours[rnd.Next(colours.Count)],
+                Second = s2.Value, SecondLine = BasicBlazon.Lines[rnd.Next(3)].Value, SecondColour = colours[rnd.Next(colours.Count)],
+                Charge = ch, Placement = pl.Value, Count = 1 + rnd.Next(3), Style = BasicBlazon.Styles[rnd.Next(3)].Value,
+                ChargeColour = colours[rnd.Next(colours.Count)],
+            };
+            Check();
+        }
+        // Pack charge
+        b = new BasicBlazon { Charge = BasicBlazon.PackCharge("black dog"), Count = 2 }; Console.WriteLine("pack: " + b.Build());
+        Console.WriteLine($"{n} checked, {bad} bad");
+    }
 }

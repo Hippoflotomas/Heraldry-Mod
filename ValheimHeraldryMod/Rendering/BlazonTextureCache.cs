@@ -56,6 +56,7 @@ namespace ValheimHeraldryMod.Rendering
 
         public static Texture2D Acquire(string normalisedText, int width, int height, Shape shape, out string key)
         {
+            normalisedText = BlazonLimits.Drawable(normalisedText);
             key = KeyFor(shape?.Id ?? "", normalisedText, width, height);
             if (!Entries.TryGetValue(key, out var entry))
             {

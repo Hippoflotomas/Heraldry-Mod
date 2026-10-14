@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace ValheimHeraldryMod.Heraldry
 {
@@ -160,6 +161,25 @@ namespace ValheimHeraldryMod.Heraldry
         public List<WordNote> Words = new List<WordNote>();
         /// <summary>Problems that don't belong to one word ("per pale needs two tinctures").</summary>
         public List<string> Messages = new List<string>();
+
+        /// <summary>
+        ///     How much there is to draw, for the server's element limit: one for a partitioned or patterned field,
+        ///     one per ordinary, one per charge (three mullets = three), charges on ordinaries included.
+        /// </summary>
+        public int Elements
+        {
+            get
+            {
+                int n = Field != null && (Field.Partition != PartitionKind.None || Field.Variation != VariationKind.None) ? 1 : 0;
+                foreach (var o in Ordinaries)
+                {
+                    n += Math.Max(1, o.Count);
+                    foreach (var c in o.Charges) n += Math.Max(1, c.Count);
+                }
+                foreach (var c in Charges) n += Math.Max(1, c.Count);
+                return n;
+            }
+        }
 
         /// <summary>True when nothing is marked Wrong and there is a field to draw.</summary>
         public bool IsValid

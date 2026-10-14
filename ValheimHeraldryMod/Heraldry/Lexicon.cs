@@ -198,7 +198,7 @@ namespace ValheimHeraldryMod.Heraldry
             { "greydwarf", "trophygreydwarf" }, { "greydwarfs", "trophygreydwarf" },
             { "draugr", "trophydraugr" }, { "draugrs", "trophydraugr" },
             { "drake", "trophyhatchling" }, { "drakes", "trophyhatchling" },
-            { "asksvin", "trophyasksvin" },
+            { "asksvin", "trophyasksvin" }, { "asksvins", "trophyasksvin" },
             { "death", "trophyskeleton" }, // a death's head is a skull
         };
 

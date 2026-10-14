@@ -135,6 +135,8 @@ namespace ValheimHeraldryMod.Heraldry
         private float BodyHeight()
         {
             if (outline == null) return h;
+            // A tabard panel: its sides wander a little with the body, but it's all field
+            if (arrangement == Arrangement.Chest) return h;
             // A round or already-narrowing shape (a round shield) has no straight body to lay out on: use it all
             int third = 0;
             for (int x = 0; x < w; x++) if (outline[(h / 3) * w + x]) third++;

@@ -23,7 +23,12 @@ namespace ValheimHeraldryMod.Heraldry
             Spread,
             /// <summary>Re-flowed into whatever rows make the charges largest ("three" becomes three in pale).</summary>
             Reflow,
+            /// <summary>Compact, centred on the chest: plain charges use the top part of a long surface (tabards).</summary>
+            Chest,
         }
+
+        /// <summary>For <see cref="Arrangement.Chest"/>: plain charges stay within this top fraction of the body.</summary>
+        public const float ChestDepth = 0.6f;
 
 
         /// <summary>Largest charge, as a fraction of the banner's width (a single charge on its own).</summary>
@@ -203,24 +208,31 @@ namespace ValheimHeraldryMod.Heraldry
             // Field charges: the "between" groups, explicit placements, then the rest share what's left
             float top = 0, bottom = fh;
             var plain = new List<Charge>();
+            var pending = new List<Pending>();
             foreach (var c in blazon.Charges)
             {
                 if (!Renderable(c)) continue;
-                if (c.Placement == Placement.Between && c.Host != null) Add(Between(c.Host, c), c, fieldCharges);
+                if (c.Placement == Placement.Between && c.Host != null) pending.Add(new Pending(Between(c.Host, c), c));
                 else if (c.Placement == Placement.None) plain.Add(c);
                 else
                 {
                     var eg = Explicit(c);
                     if (eg.Space == null) eg.Space = dOver;
-                    Add(eg, c, fieldCharges);
+                    pending.Add(new Pending(eg, c));
                     if (c.Placement == Placement.Chief) top = Math.Max(top, ChiefDepth * fh);
                     if (c.Placement == Placement.Base) bottom = Math.Min(bottom, (1 - ChiefDepth) * fh);
                 }
             }
-            if (plain.Count == 0) return;
+            if (plain.Count > 0) LayoutPlain(plain, top, bottom, pending);
+            FitTogether(pending);
+        }
 
+        /// <summary>Charges with no placement share the free field, each group in its share of the rows.</summary>
+        private void LayoutPlain(List<Charge> plain, float top, float bottom, List<Pending> pending)
+        {
             // Free box: where the field isn't covered (below a chief, inside a bordure), within the body
             FreeBox(ref top, ref bottom, out float left, out float right);
+            if (arrangement == Arrangement.Chest) bottom = Math.Min(bottom, Math.Max(top + 0.2f * fh, ChestDepth * fh));
             int totalRows = 0;
             var rowsOf = new List<int[]>();
             foreach (var c in plain)
@@ -234,9 +246,9 @@ namespace ValheimHeraldryMod.Heraldry
             for (int i = 0; i < plain.Count; i++)
             {
                 float y1 = y0 + (bottom - top) * rowsOf[i].Length / totalRows;
-                var pg = RowsInBox(rowsOf[i], left, y0, right, y1, arrangement != Arrangement.Compact);
+                var pg = RowsInBox(rowsOf[i], left, y0, right, y1, arrangement != Arrangement.Compact && arrangement != Arrangement.Chest);
                 pg.Space = dOver; // charges with no placement lie over any ordinary crossing the field
-                Add(pg, plain[i], fieldCharges);
+                pending.Add(new Pending(pg, plain[i]));
                 y0 = y1;
             }
         }
@@ -256,11 +268,65 @@ namespace ValheimHeraldryMod.Heraldry
         private void Add(Group g, Charge c, List<Placed> into)
         {
             if (g.Xs == null || g.Count == 0) return;
+            Emit(g, c, SizeAllowed(g), into);
+        }
+
+        /// <summary>The largest size the group's own spots allow: its cells, the free space, the largest charge.</summary>
+        private float SizeAllowed(Group g)
+        {
             float r = Math.Min(g.R, MaxCharge * w * 0.5f);
             var space = g.Space ?? dFree;
             for (int i = 0; i < g.Count; i++)
                 r = Math.Min(r, Grid(space, g.Xs[i], g.Ys[i]) * 0.94f);
-            r = Math.Max(r, 2f);
+            return Math.Max(r, 2f);
+        }
+
+        private sealed class Pending
+        {
+            public Group G;
+            public Charge C;
+            public float R;
+            public Pending(Group g, Charge c) { G = g; C = c; }
+        }
+
+        /// <summary>
+        ///     The field's charge groups sized together (Hippo, 2026-10-14): each first takes the most its own spots
+        ///     allow, so a lone charge at the fess point fills the field; then wherever two groups would overlap,
+        ///     the bigger one shrinks until they clear (never below half the gap, so the smaller gives way too
+        ///     when both are large). Charges in chief and base squeeze one at the fess point; alone it grows.
+        /// </summary>
+        private void FitTogether(List<Pending> pending)
+        {
+            pending.RemoveAll(p => p.G.Xs == null || p.G.Count == 0);
+            foreach (var p in pending) p.R = SizeAllowed(p.G);
+            const float Clear = 0.94f; // room between neighbours, as against the cloth edge
+            for (int pass = 0; pass < 12; pass++)
+            {
+                bool changed = false;
+                for (int a = 0; a < pending.Count; a++)
+                for (int b = a + 1; b < pending.Count; b++)
+                {
+                    var A = pending[a]; var B = pending[b];
+                    for (int i = 0; i < A.G.Count; i++)
+                    for (int j = 0; j < B.G.Count; j++)
+                    {
+                        float dx = A.G.Xs[i] - B.G.Xs[j], dy = A.G.Ys[i] - B.G.Ys[j];
+                        float gap = (float)Math.Sqrt(dx * dx + dy * dy) * Clear;
+                        if (A.R + B.R <= gap + 0.5f) continue;
+                        var big = A.R >= B.R ? A : B;
+                        var small = big == A ? B : A;
+                        if (small.R <= gap * 0.5f) big.R = Math.Max(gap - small.R, 2f);  // the bigger one gives way
+                        else { big.R = small.R = Math.Max(gap * 0.5f, 2f); }             // both large: share the gap
+                        changed = true;
+                    }
+                }
+                if (!changed) break;
+            }
+            foreach (var p in pending) Emit(p.G, p.C, p.R, fieldCharges);
+        }
+
+        private void Emit(Group g, Charge c, float r, List<Placed> into)
+        {
             var art = c.ArtKey != null ? ChargeArtLibrary.Get(c.ArtKey) : null;
             bool fallback = !c.Drawable || ((c.ArtKey != null || c.PackName != null) && art == null);
             for (int i = 0; i < g.Count; i++)
@@ -424,7 +490,9 @@ namespace ValheimHeraldryMod.Heraldry
             }
             float x0 = left + col * cw, y0 = top + (row + rowsOffset) * rh;
             var rows = n <= 3 ? new[] { n } : DefaultRows(n);
-            return RowsInBox(rows, x0, y0, x0 + cw, y0 + rh, false);
+            var g = RowsInBox(rows, x0, y0, x0 + cw, y0 + rh, false);
+            if (n == 1) g.R = MaxCharge * w * 0.5f; // alone it may fill the field; FitTogether shrinks it for neighbours
+            return g;
         }
 
         private static int[] Repeat(int v, int n)
