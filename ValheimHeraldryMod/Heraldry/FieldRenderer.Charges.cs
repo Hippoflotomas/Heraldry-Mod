@@ -39,7 +39,15 @@ namespace ValheimHeraldryMod.Heraldry
         {
             public Charge C;
             public float X, Y, R; // centre and half size, pixels
+            public ChargeArt Art; // picture art; null for geometric charges and the fallback
+            public bool Fallback; // no art for this charge (yet): the magenta-and-black roundel
         }
+
+        private static readonly Rgba FallbackMagenta = new Rgba(255, 0, 255);
+        private static readonly Rgba FallbackBlack = new Rgba(0, 0, 0);
+
+        /// <summary>Geometric charges need a tincture; art charges need one too unless they're the fallback.</summary>
+        private static bool Renderable(Charge c) => c.Tincture != null || !c.Drawable || c.ArtKey != null || c.PackName != null;
 
         private readonly List<Placed> fieldCharges = new List<Placed>();
         private readonly Dictionary<Ordinary, List<Placed>> onCharges = new Dictionary<Ordinary, List<Placed>>();
@@ -47,6 +55,11 @@ namespace ValheimHeraldryMod.Heraldry
         // Coarse grid for layout distances
         private int gs, gw, gh;
         private float[] dFree, dCloth;
+        /// <summary>
+        ///     Room for charges laid "over all": only the cloth edge and edge ordinaries (chief, bordure) take space;
+        ///     a pale or bend through the middle is simply drawn over.
+        /// </summary>
+        private float[] dOver;
         private readonly Dictionary<Ordinary, float[]> dInside = new Dictionary<Ordinary, float[]>();
 
         // ================================================================== drawing
@@ -59,7 +72,19 @@ namespace ValheimHeraldryMod.Heraldry
             {
                 float reach = p.R * (1.2f + ChargeShapes.RimWidth);
                 if (Math.Abs(x - p.X) > reach || Math.Abs(y - p.Y) > reach) continue;
-                float d = ChargeShapes.Distance(p.C, (x - p.X) / p.R, (y - p.Y) / p.R) * p.R;
+                float u = (x - p.X) / p.R, v = (y - p.Y) / p.R;
+                if (p.Fallback)
+                {
+                    if (ChargeShapes.Fallback(u, v) < 0) c = ChargeShapes.FallbackMagenta(u, v) ? FallbackMagenta : FallbackBlack;
+                    continue;
+                }
+                float d;
+                if (p.Art != null)
+                {
+                    ChargeShapes.Orient(p.C, ref u, ref v);
+                    d = p.Art.Distance(u, v, p.C.Mask) * p.R;
+                }
+                else d = ChargeShapes.Distance(p.C, u, v) * p.R;
                 float rim = Math.Max(1.5f, ChargeShapes.RimWidth * p.R);
                 var style = p.C.Style;
                 if (d >= 0)
@@ -72,10 +97,47 @@ namespace ValheimHeraldryMod.Heraldry
                     if (style.VoidTincture != null) c = Colour(style.VoidTincture, x, y);
                     continue; // otherwise what's beneath shows through
                 }
-                c = Tinct(p.C.Tincture, fieldRegion, x, y);
+                if (p.Art == null)
+                {
+                    c = Tinct(p.C.Tincture, fieldRegion, x, y);
+                    continue;
+                }
+                bool proper = p.C.Tincture == null || p.C.Tincture.Kind == TinctureKind.Proper;
+                if (proper)
+                {
+                    // The art's own colours; a tongue or claws outside the colour image are naturally red
+                    c = p.C.Mask != MaskMode.Plain && Math.Max(p.Art.Armed(u, v), p.Art.Langued(u, v)) > p.Art.Body(u, v)
+                        ? Lexicon.Palette["gules"] : p.Art.Colour(u, v);
+                }
+                else c = Tinct(p.C.Tincture, fieldRegion, x, y); // silhouette in the tincture
+                if (style.Voided) continue;
+                // "armed and langued gules": the mask's claws and tongue in their own tincture
+                var mode = p.C.Mask;
+                if (p.C.Armed != null && mode == MaskMode.Normal)
+                {
+                    float arm = p.Art.Armed(u, v);
+                    if (arm > 0.01f) c = Mix(c, Colour(p.C.Armed, x, y), arm);
+                }
+                if (p.C.Langued != null && (mode == MaskMode.Normal || mode == MaskMode.Disarmed))
+                {
+                    float tongue = p.Art.Langued(u, v);
+                    if (tongue > 0.01f) c = Mix(c, Colour(p.C.Langued, x, y), tongue);
+                }
+                // Interior lines: sable on metals, argent on colours; proper art has its own detail
+                float ink = proper || mode == MaskMode.Plain ? 0 : p.Art.Lines(u, v);
+                if (ink > 0.01f)
+                {
+                    var line = Luma(c) < 110 ? Lexicon.Palette["argent"] : Lexicon.Palette["sable"];
+                    c = Mix(c, line, ink);
+                }
             }
             return c;
         }
+
+        private static int Luma(Rgba c) => (299 * c.R + 587 * c.G + 114 * c.B) / 1000;
+
+        private static Rgba Mix(Rgba a, Rgba b, float t) =>
+            new Rgba((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
 
         /// <summary>A tincture at a point; counterchanged takes the field's other tincture there.</summary>
         private Rgba Tinct(Tincture t, int fieldRegion, float x, float y)
@@ -105,9 +167,9 @@ namespace ValheimHeraldryMod.Heraldry
         private void LayoutCharges()
         {
             bool any = false;
-            foreach (var c in blazon.Charges) if (c.Drawable && c.Tincture != null) any = true;
+            foreach (var c in blazon.Charges) if (Renderable(c)) any = true;
             foreach (var o in blazon.Ordinaries)
-                foreach (var c in o.Charges) if (c.Drawable && c.Tincture != null) any = true;
+                foreach (var c in o.Charges) if (Renderable(c)) any = true;
             if (!any) return;
 
             gs = Math.Max(2, (int)Math.Round(unit / 128f));
@@ -122,11 +184,20 @@ namespace ValheimHeraldryMod.Heraldry
                         return true;
                 return false;
             });
+            dOver = Chamfer((x, y) =>
+            {
+                if (!Cloth(x, y)) return true;
+                foreach (var o in blazon.Ordinaries)
+                    if (o.Tincture != null && (o.Kind == OrdinaryKind.Chief || o.Kind == OrdinaryKind.Bordure) &&
+                        InsideOrdinary(o, x, y, o.Style.Fimbriation != null ? OrdinaryFimbriation * unit : 0))
+                        return true;
+                return false;
+            });
 
             // Charges on ordinaries
             foreach (var o in blazon.Ordinaries)
                 foreach (var c in o.Charges)
-                    if (c.Drawable && c.Tincture != null)
+                    if (Renderable(c))
                         Add(OnOrdinary(o, c), c, onCharges.TryGetValue(o, out var l) ? l : onCharges[o] = new List<Placed>());
 
             // Field charges: the "between" groups, explicit placements, then the rest share what's left
@@ -134,12 +205,14 @@ namespace ValheimHeraldryMod.Heraldry
             var plain = new List<Charge>();
             foreach (var c in blazon.Charges)
             {
-                if (!c.Drawable || c.Tincture == null) continue;
+                if (!Renderable(c)) continue;
                 if (c.Placement == Placement.Between && c.Host != null) Add(Between(c.Host, c), c, fieldCharges);
                 else if (c.Placement == Placement.None) plain.Add(c);
                 else
                 {
-                    Add(Explicit(c), c, fieldCharges);
+                    var eg = Explicit(c);
+                    if (eg.Space == null) eg.Space = dOver;
+                    Add(eg, c, fieldCharges);
                     if (c.Placement == Placement.Chief) top = Math.Max(top, ChiefDepth * fh);
                     if (c.Placement == Placement.Base) bottom = Math.Min(bottom, (1 - ChiefDepth) * fh);
                 }
@@ -161,7 +234,9 @@ namespace ValheimHeraldryMod.Heraldry
             for (int i = 0; i < plain.Count; i++)
             {
                 float y1 = y0 + (bottom - top) * rowsOf[i].Length / totalRows;
-                Add(RowsInBox(rowsOf[i], left, y0, right, y1, arrangement != Arrangement.Compact), plain[i], fieldCharges);
+                var pg = RowsInBox(rowsOf[i], left, y0, right, y1, arrangement != Arrangement.Compact);
+                pg.Space = dOver; // charges with no placement lie over any ordinary crossing the field
+                Add(pg, plain[i], fieldCharges);
                 y0 = y1;
             }
         }
@@ -186,8 +261,10 @@ namespace ValheimHeraldryMod.Heraldry
             for (int i = 0; i < g.Count; i++)
                 r = Math.Min(r, Grid(space, g.Xs[i], g.Ys[i]) * 0.94f);
             r = Math.Max(r, 2f);
+            var art = c.ArtKey != null ? ChargeArtLibrary.Get(c.ArtKey) : null;
+            bool fallback = !c.Drawable || ((c.ArtKey != null || c.PackName != null) && art == null);
             for (int i = 0; i < g.Count; i++)
-                into.Add(new Placed { C = c, X = g.Xs[i], Y = g.Ys[i], R = r });
+                into.Add(new Placed { C = c, X = g.Xs[i], Y = g.Ys[i], R = r, Art = art, Fallback = fallback });
         }
 
         // ------------------------------------------------------------------ rows
@@ -265,7 +342,7 @@ namespace ValheimHeraldryMod.Heraldry
                 if (y < top || y > bottom) continue;
                 for (int gx = 0; gx < gw; gx++)
                 {
-                    if (dFree[gy * gw + gx] < min) continue;
+                    if (dOver[gy * gw + gx] < min) continue;
                     gx0 = Math.Min(gx0, gx); gx1 = Math.Max(gx1, gx);
                     gy0 = Math.Min(gy0, gy); gy1 = Math.Max(gy1, gy);
                 }
@@ -301,17 +378,17 @@ namespace ValheimHeraldryMod.Heraldry
                 case Placement.BendSinister:
                 {
                     float dx = c.Placement == Placement.Bend ? w : -w, dy = fh;
-                    return Line(cx, cy, dx / diag, dy / diag, n, dFree, null);
+                    return Line(cx, cy, dx / diag, dy / diag, n, dOver, null);
                 }
                 case Placement.Cross:
-                    return Arms(cx, cy, new[] { 0f, 0f, -1f, 1f }, new[] { -1f, 1f, 0f, 0f }, n, dFree);
+                    return Arms(cx, cy, new[] { 0f, 0f, -1f, 1f }, new[] { -1f, 1f, 0f, 0f }, n, dOver);
                 case Placement.Saltire:
                 {
                     float ux = w / diag, uy = fh / diag;
-                    return Arms(cx, cy, new[] { -ux, ux, -ux, ux }, new[] { -uy, -uy, uy, uy }, n, dFree);
+                    return Arms(cx, cy, new[] { -ux, ux, -ux, ux }, new[] { -uy, -uy, uy, uy }, n, dOver);
                 }
                 case Placement.Orle:
-                    return Around(dFree, 0.16f * unit, n, 0.16f * unit * 0.85f);
+                    return Around(dOver, 0.16f * unit, n, 0.16f * unit * 0.85f);
             }
             return RowsInBox(DefaultRows(n), 0, 0, w, fh, true);
         }

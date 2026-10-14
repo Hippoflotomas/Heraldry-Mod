@@ -69,6 +69,7 @@ namespace ValheimHeraldryMod.Rendering
                 else
                 {
                     var blazon = BlazonParser.Parse(normalisedText);
+                    IconArt.EnsureFor(blazon); // game icons are read on this (main) thread before the worker runs
                     Fill(tex, PreviewColour(blazon), false);
                     float[] uv = shape?.UV;
                     int[] tris = shape?.Triangles;

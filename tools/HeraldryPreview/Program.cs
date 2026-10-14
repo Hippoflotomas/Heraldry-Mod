@@ -8,6 +8,8 @@ static class Program
     static void Main(string[] args)
     {
         string mode = args.Length > 0 ? args[0] : "parse";
+        LoadIcons();
+        LoadPacks();
         if (mode == "render")
         {
             // render <list> <outdir> <width> <height>
@@ -47,6 +49,15 @@ static class Program
             }
             return;
         }
+        if (mode == "manifest")
+        {
+            // manifest <file>: read a pack manifest exactly as the mod does
+            var m = PackManifest.Parse(File.ReadAllText(args[1]));
+            Console.WriteLine($"pack={m.pack} version={m.version} charges={m.charges.Count} atlases={m.atlases.Count}");
+            foreach (var c in m.charges)
+                Console.WriteLine($"  names=[{string.Join(", ", c.names)}] attitudes=[{string.Join(", ", c.attitudes)}] image={c.image} mask={c.mask} noLines={c.noLines}");
+            return;
+        }
         if (mode == "parse")
         {
             foreach (var line in File.ReadAllLines(args[1]))
@@ -72,6 +83,89 @@ static class Program
     static string Style(Style s) =>
         (s.Voided ? " voided" + (s.VoidTincture != null ? " " + s.VoidTincture : "") : "") +
         (s.Fimbriation != null ? " fimbriated " + s.Fimbriation : "");
+
+    /// <summary>
+    ///     Game icons for picture charges, outside the game: set HERALDRY_ICONS to a folder of .rgba files
+    ///     (4-byte width, 4-byte height, then RGBA rows top to bottom), named like trophywolf.rgba.
+    ///     icons_to_rgba.py makes them from the PNGs the in-game 'heraldry_probe icons' command saves.
+    /// </summary>
+    static void LoadIcons()
+    {
+        string dir = Environment.GetEnvironmentVariable("HERALDRY_ICONS");
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+        int n = 0;
+        foreach (var f in Directory.GetFiles(dir, "*.rgba"))
+        {
+            var bytes = File.ReadAllBytes(f);
+            int w = BitConverter.ToInt32(bytes, 0), h = BitConverter.ToInt32(bytes, 4);
+            var px = new Rgba[w * h];
+            for (int i = 0; i < w * h; i++)
+                px[i] = new Rgba(bytes[8 + i * 4], bytes[9 + i * 4], bytes[10 + i * 4], bytes[11 + i * 4]);
+            ChargeArtLibrary.Register(Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), px, w, h, deriveLines: true);
+            n++;
+        }
+        Console.Error.WriteLine($"{n} icons from {dir}");
+    }
+
+    /// <summary>
+    ///     Charge packs outside the game: set HERALDRY_PACKS to a folder of pack folders (as in
+    ///     BepInEx/config/Heraldry/Charges). Each PNG needs a .rgba twin made by icons_to_rgba.py (wolf.png.rgba).
+    ///     Single-image charges only; atlases are read by the mod itself.
+    /// </summary>
+    static void LoadPacks()
+    {
+        string root = Environment.GetEnvironmentVariable("HERALDRY_PACKS");
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+        var packs = new TestPacks();
+        foreach (var dir in Directory.GetDirectories(root))
+        {
+            var m = PackManifest.Parse(File.ReadAllText(Path.Combine(dir, "manifest.json"))); // the mod's own reader
+            string pack = (m.pack ?? Path.GetFileName(dir)).ToLowerInvariant().Replace(' ', '-');
+            foreach (var ch in m.charges)
+            {
+                if (ch == null || ch.image == null || ch.names.Length == 0) continue;
+                var (px, w, h) = ReadRgba(FindCaseless(dir, ch.image + ".rgba"));
+                Rgba[] mask = ch.mask != null ? ReadRgba(FindCaseless(dir, ch.mask + ".rgba")).px : null;
+                string key = $"pack:{pack}:{packs.Count}";
+                ChargeArtLibrary.Register(key, px, w, h, !ch.noLines, mask);
+                foreach (var n in ch.names) packs.Add(n, pack, key, ch.attitudes);
+            }
+        }
+        Lexicon.Packs = packs;
+        Console.Error.WriteLine($"{packs.Count} pack drawings from {root}");
+    }
+
+    /// <summary>Windows file names ignore case; this harness runs on Linux, so match the way Windows would.</summary>
+    static string FindCaseless(string dir, string name) =>
+        Directory.GetFiles(dir).FirstOrDefault(f => string.Equals(Path.GetFileName(f), name, StringComparison.OrdinalIgnoreCase))
+        ?? Path.Combine(dir, name);
+
+    static (Rgba[] px, int w, int h) ReadRgba(string f)
+    {
+        var bytes = File.ReadAllBytes(f);
+        int w = BitConverter.ToInt32(bytes, 0), h = BitConverter.ToInt32(bytes, 4);
+        var px = new Rgba[w * h];
+        for (int i = 0; i < w * h; i++) px[i] = new Rgba(bytes[8 + i * 4], bytes[9 + i * 4], bytes[10 + i * 4], bytes[11 + i * 4]);
+        return (px, w, h);
+    }
+
+    /// <summary>Minimal stand-in for the mod's ChargePacks (first pack wins, best attitude match).</summary>
+    sealed class TestPacks : IPackCharges
+    {
+        readonly System.Collections.Generic.List<(string name, string pack, string key, string[] atts)> all = new();
+        public int Count;
+        public void Add(string name, string pack, string key, string[] atts) { all.Add((name.ToLowerInvariant(), pack, key, atts)); Count++; }
+        public string Resolve(string name, System.Collections.Generic.IList<string> attitudes, out string unmatched)
+        {
+            unmatched = null;
+            var c = all.Where(d => d.name == name || d.pack + ":" + d.name == name).ToList();
+            if (c.Count == 0) return null;
+            var best = c.OrderByDescending(d => attitudes.Count(a => d.atts.Contains(a))).First();
+            unmatched = attitudes.FirstOrDefault(a => !best.atts.Contains(a) && a != "contourne" && a != "inverted" && a != "reversed");
+            return best.key;
+        }
+        public string Suggest(string name) => null;
+    }
 
     static float Frac(float v) => v - (float)Math.Floor(v);
 

@@ -14,11 +14,22 @@ namespace ValheimHeraldryMod.Heraldry
         /// <summary>Width of a voided charge's rim and a fimbriated charge's edging, in box units.</summary>
         public const float RimWidth = 0.13f;
 
-        public static float Distance(Charge c, float u, float v)
+        /// <summary>Applies the charge's flips to a point in its box: inverted = upside down, reversed/contourné = mirrored.</summary>
+        public static void Orient(Charge c, ref float u, ref float v)
         {
             foreach (var a in c.Attitudes)
                 if (a == "inverted") v = -v; // upside down (a crescent with its horns down)
-                else if (a == "reversed") u = -u;
+                else if (a == "reversed" || a == "contourne" || a == "contourny") u = -u;
+        }
+
+        /// <summary>The fallback roundel ("this charge isn't available"): a disc, quartered magenta and black.</summary>
+        public static float Fallback(float u, float v) => Circle(u, v, 0.9f);
+
+        public static bool FallbackMagenta(float u, float v) => (u < 0) == (v < 0);
+
+        public static float Distance(Charge c, float u, float v)
+        {
+            Orient(c, ref u, ref v);
 
             switch (c.Noun)
             {

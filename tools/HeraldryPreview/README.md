@@ -15,3 +15,7 @@ An optional last argument to `render` picks how field charges use the tall banne
 ```
 dotnet run -- render sheet6.txt out 406 1024 point reflow
 ```
+
+Picture charges (game icons) need the icons outside the game: run `heraldry_probe icons Trophy` in game, convert the saved PNGs with `python icons_to_rgba.py <HeraldryProbe/icons> icons_rgba`, then set `HERALDRY_ICONS=icons_rgba` before `render`. `sheet7` tests them. Without it, icon charges render as the placeholder roundel.
+
+Charge packs: set `HERALDRY_PACKS` to a folder of pack folders (like `tools/ExamplePack`), after making a `.rgba` twin of each PNG (`wolf.png` -> `wolf.png.rgba`, same format as `icons_to_rgba.py` writes). `sheet8` tests them.

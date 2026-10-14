@@ -103,6 +103,13 @@ namespace ValheimHeraldryMod.Heraldry
         public List<Charge> Charges = new List<Charge>();
     }
 
+    /// <summary>
+    ///     What a picture charge's mask adds. Normal: lines, claws and tongue. Disarmed: no claws, beak or teeth
+    ///     (the armed layer). Morné: no claws or tongue either. Plain (this mod's own term): the colour image
+    ///     alone, ignoring the mask entirely.
+    /// </summary>
+    public enum MaskMode { Normal, Disarmed, Morne, Plain }
+
     /// <summary>Where a group of charges goes. None = the default arrangement for the count.</summary>
     public enum Placement { None, Pale, Fess, Bend, BendSinister, Saltire, Cross, Chief, Base, Orle, Between, On }
 
@@ -122,8 +129,20 @@ namespace ValheimHeraldryMod.Heraldry
         public int Points = 5;
         /// <summary>Mullets: pierced (a round hole showing what's beneath).</summary>
         public bool Pierced;
-        /// <summary>The renderer knows this shape (the geometric charges); others wait for charge art.</summary>
+        /// <summary>
+        ///     The renderer can draw this: a geometric shape, or picture art (see <see cref="ArtKey"/>).
+        ///     Anything else is drawn as the fallback roundel until art for it exists.
+        /// </summary>
         public bool Drawable;
+        /// <summary>Picture art to draw ("trophywolf"); null for geometric charges. Missing art = fallback roundel.</summary>
+        public string ArtKey;
+        /// <summary>A charge from a charge pack, by the name in its brackets ("wolf", "northern-beasts:wolf").</summary>
+        public string PackName;
+        /// <summary>"armed gules": claws, horns, beak, hooves, antlers. Null = same as the charge.</summary>
+        public Tincture Armed;
+        /// <summary>"langued azure": the tongue. Null = same as the charge.</summary>
+        public Tincture Langued;
+        public MaskMode Mask;
     }
 
     public sealed class Blazon

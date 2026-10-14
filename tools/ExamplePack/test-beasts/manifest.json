@@ -1,0 +1,12 @@
+{
+  "pack": "test-beasts",
+  "version": 1,
+  "charges": [
+    {
+      "names": ["wolf", "wolves"],
+      "attitudes": ["passant"],
+      "image": "wolf_passant.png",
+      "mask": "wolf_passant_mask.png"
+    }
+  ]
+}

@@ -23,6 +23,10 @@ namespace ValheimHeraldryMod
             Jotunn.Logger.LogInfo($"{PluginName} {PluginVersion} has landed");
 
             HeraldryConfig.Bind(Config);
+            Heraldry.ChargeArtLibrary.IsBlocked = Rendering.IconArt.IsBlocked;
+            Heraldry.Lexicon.GameItems = Rendering.IconArt.Instance;
+            Rendering.ChargePacks.Instance.LoadAll();
+            Heraldry.Lexicon.Packs = Rendering.ChargePacks.Instance;
             Banners.BannerRegistry.Init();
 
             // Dev-only: readback prototype (icons + fonts). Remove once the charge pipeline is settled.

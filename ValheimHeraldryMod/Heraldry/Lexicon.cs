@@ -6,6 +6,28 @@ namespace ValheimHeraldryMod.Heraldry
     ///     Every word the parser knows. Leniency is on words, never on meaning: plain-English aliases are
     ///     accepted as Passable with the correct term, ambiguous words are Wrong.
     /// </summary>
+    /// <summary>Looks up game items by the name players see (or their internal prefab name).</summary>
+    public interface IGameItems
+    {
+        bool Ready { get; }
+        /// <summary>Art key (prefab name, lower case) for a folded name, or null if there's no such item.</summary>
+        string Find(string name);
+        /// <summary>The closest real item name, for "did you mean", or null.</summary>
+        string Suggest(string name);
+    }
+
+    /// <summary>Charges from charge packs, by the names in their manifests.</summary>
+    public interface IPackCharges
+    {
+        /// <summary>
+        ///     Art key for this name ("wolf", or "pack:wolf"), choosing the drawing that best matches the attitudes.
+        ///     Null if no pack has the name. <paramref name="unmatched"/> = an attitude no drawing of it has.
+        /// </summary>
+        string Resolve(string name, IList<string> attitudes, out string unmatched);
+        /// <summary>The closest charge name, for "did you mean", or null.</summary>
+        string Suggest(string name);
+    }
+
     internal static class Lexicon
     {
         public sealed class TinctureEntry
@@ -155,6 +177,57 @@ namespace ValheimHeraldryMod.Heraldry
             "bezant", "plate", "torteau", "hurt", "pellet", "pomme", "ogress", "golpe",
         };
 
+        /// <summary>
+        ///     Game trophy icons by heraldic name. Trophies are heads, so most are "X's head"; keys are the X
+        ///     (and its plural stem, since "wolves' heads" arrives as "wolves"). Values are art keys: the trophy
+        ///     prefab name in lower case. Any trophy can also be named directly ("a TrophyGoblinKing").
+        /// </summary>
+        public static readonly Dictionary<string, string> HeadIcons = new Dictionary<string, string>
+        {
+            { "wolf", "trophywolf" }, { "wolves", "trophywolf" }, { "wolve", "trophywolf" },
+            { "boar", "trophyboar" }, { "boars", "trophyboar" },
+            { "stag", "trophydeer" }, { "stags", "trophydeer" }, { "hart", "trophydeer" }, { "harts", "trophydeer" },
+            { "deer", "trophydeer" },
+            { "elk", "trophymoose" }, { "elks", "trophymoose" }, { "moose", "trophymoose" },
+            { "bear", "trophybjorn" }, { "bears", "trophybjorn" },
+            { "troll", "trophyforesttroll" }, { "trolls", "trophyforesttroll" },
+            { "lox", "trophylox" }, { "loxes", "trophylox" },
+            { "seal", "trophyseal" }, { "seals", "trophyseal" },
+            { "serpent", "trophyserpent" }, { "serpents", "trophyserpent" },
+            { "goblin", "trophygoblin" }, { "goblins", "trophygoblin" },
+            { "greydwarf", "trophygreydwarf" }, { "greydwarfs", "trophygreydwarf" },
+            { "draugr", "trophydraugr" }, { "draugrs", "trophydraugr" },
+            { "drake", "trophyhatchling" }, { "drakes", "trophyhatchling" },
+            { "asksvin", "trophyasksvin" },
+            { "death", "trophyskeleton" }, // a death's head is a skull
+        };
+
+        /// <summary>Trophies named as charges in their own right (the skull, and the Forsaken by name).</summary>
+        public static readonly Dictionary<string, string> NounIcons = new Dictionary<string, string>
+        {
+            { "skull", "trophyskeleton" }, { "skulls", "trophyskeleton" },
+            { "eikthyr", "trophyeikthyr" }, { "elder", "trophytheelder" }, { "bonemass", "trophybonemass" },
+            { "moder", "trophydragonqueen" }, { "yagluth", "trophygoblinking" }, { "queen", "trophyseekerqueen" },
+            { "fader", "trophyfader" },
+        };
+
+        /// <summary>
+        ///     The game's items, for quoted charges ("wood", "bronze axe"). Supplied by the game side once a world
+        ///     is loaded; null (or not Ready) means names can't be checked, so they're accepted as written.
+        /// </summary>
+        public static IGameItems GameItems;
+
+        /// <summary>Charge packs available on this computer; null = none loaded.</summary>
+        public static IPackCharges Packs;
+
+        /// <summary>Detail words drawn from a charge's mask: green layer (armed and its kin) or blue (langued).</summary>
+        public static bool IsArmedWord(string w) =>
+            w == "armed" || w == "unguled" || w == "beaked" || w == "attired" || w == "membered";
+
+        /// <summary>Attitudes the renderer can show on any charge (flips); others need art drawn that way.</summary>
+        public static bool IsFlip(string attitude) =>
+            attitude == "inverted" || attitude == "reversed" || attitude == "contourne" || attitude == "contourny";
+
         /// <summary>Drawn charges with no natural colour, so "proper" means nothing for them.</summary>
         public static bool IsGeometric(string noun) => DrawnCharges.Contains(noun);
 
@@ -278,6 +351,9 @@ namespace ValheimHeraldryMod.Heraldry
             Charges["ring"] = new ChargeEntry { Singular = "annulet", PassableNote = "the heraldic term is 'annulet'" };
             Charges["rings"] = new ChargeEntry { Singular = "annulet", Plural = true, PassableNote = "the heraldic term is 'annulet'" };
             Charges["moon"] = new ChargeEntry { Singular = "crescent", PassableNote = "the heraldic term is 'crescent'" };
+            foreach (var kv in NounIcons)
+                if (!Charges.ContainsKey(kv.Key))
+                    Charges[kv.Key] = new ChargeEntry { Singular = kv.Key == "skulls" ? "skull" : kv.Key, Plural = kv.Key == "skulls" };
             C("bezant", "bezants", "or"); C("plate", "plates", "argent"); C("torteau", "torteaux", "gules");
             C("hurt", "hurts", "azure"); C("pellet", "pellets", "sable"); C("pomme", "pommes", "vert");
             C("ogress", "ogresses", "sable"); C("golpe", "golpes", "purpure");
@@ -298,6 +374,7 @@ namespace ValheimHeraldryMod.Heraldry
             foreach (var k in Attitudes) yield return k;
             yield return "per"; yield return "party"; yield return "quarterly"; yield return "sinister";
             yield return "counterchanged"; yield return "proper"; yield return "between"; yield return "on";
+            yield return "disarmed"; yield return "morne"; yield return "plain";
         }
 
         public static string Suggest(string word)

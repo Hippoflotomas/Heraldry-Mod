@@ -29,7 +29,7 @@ namespace ValheimHeraldryMod.Heraldry
         private Charge lastCharge;
         /// <summary>"in chief three mullets": a placement waiting for the charges that follow it.</summary>
         private Placement pendingPlacement;
-        private const string NeedsArt = "this charge needs art; it's drawn in a later update";
+        private const string NeedsArt = "this charge needs art; shown as a placeholder roundel for now";
 
         public static Blazon Parse(string text) => new BlazonParser(text ?? "").Run();
 
@@ -63,6 +63,37 @@ namespace ValheimHeraldryMod.Heraldry
                 char c = text[i];
                 if (char.IsWhiteSpace(c)) { i++; continue; }
                 int start = i;
+                if (c == '[')
+                {
+                    // [wolf]: a charge from a charge pack. Like quotes, the text keeps its brackets.
+                    i++;
+                    while (i < text.Length && text[i] != ']') i++;
+                    bool closed = i < text.Length;
+                    if (closed) i++;
+                    string inner = text.Substring(start + 1, (closed ? i - 1 : i) - start - 1);
+                    var bn = new WordNote { Start = start, Length = i - start, Word = text.Substring(start, i - start), Status = (WordStatus)(-1) };
+                    result.Words.Add(bn);
+                    var bt = new Tok { Text = "[" + Spaces(Fold(inner)).Replace(" :", ":").Replace(": ", ":") + "]", Note = bn };
+                    toks.Add(bt);
+                    if (!closed) Mark(bt, WordStatus.Wrong, "the closing ] is missing");
+                    continue;
+                }
+                if (IsQuote(c))
+                {
+                    // "bronze axe": a game item by its in-game name, one token whatever it contains.
+                    // Its text keeps the quotes so it can never be mistaken for a heraldic word.
+                    i++;
+                    while (i < text.Length && !IsQuote(text[i])) i++;
+                    bool closed = i < text.Length;
+                    if (closed) i++;
+                    string inner = text.Substring(start + 1, (closed ? i - 1 : i) - start - 1);
+                    var qn = new WordNote { Start = start, Length = i - start, Word = text.Substring(start, i - start), Status = (WordStatus)(-1) };
+                    result.Words.Add(qn);
+                    var qt = new Tok { Text = "\"" + Spaces(Fold(inner)) + "\"", Note = qn };
+                    toks.Add(qt);
+                    if (!closed) Mark(qt, WordStatus.Wrong, "the closing quote is missing");
+                    continue;
+                }
                 if (IsWordChar(c))
                 {
                     while (i < text.Length && IsWordChar(text[i])) i++;
@@ -80,6 +111,14 @@ namespace ValheimHeraldryMod.Heraldry
                 toks.Add(new Tok { Text = Fold(raw), Note = note });
             }
         }
+
+        private static bool IsQuote(char c) => c == '"' || c == '\u201C' || c == '\u201D';
+
+        private static bool IsBracketed(string t) => t != null && t.Length >= 2 && t[0] == '[';
+
+        private static bool IsQuoted(string t) => t != null && t.Length >= 2 && t[0] == '"';
+
+        private static string Spaces(string s) => string.Join(" ", s.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries));
 
         private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '-' || c == '\'' || c == '#' || c == '’';
 
@@ -302,7 +341,7 @@ namespace ValheimHeraldryMod.Heraldry
         {
             string w = Cur;
             if (w == null) return false;
-            if (Lexicon.Ordinaries.ContainsKey(w) || Lexicon.Charges.ContainsKey(w)) return true;
+            if (Lexicon.Ordinaries.ContainsKey(w) || Lexicon.Charges.ContainsKey(w) || IsQuoted(w) || IsBracketed(w)) return true;
             if (w == "on" || w == "between") return true;
             if ((Lexicon.Numbers.ContainsKey(w) || IsDigits(w)) && Peek(1) != null &&
                 (Lexicon.Ordinaries.ContainsKey(Peek(1)) || Lexicon.Charges.ContainsKey(Peek(1))))
@@ -401,6 +440,14 @@ namespace ValheimHeraldryMod.Heraldry
                 return;
             }
 
+            // "over all" / "overall": a charge laid over the ordinaries, which is how unplaced charges are drawn anyway
+            if (w == "overall" || (w == "over" && Peek(1) == "all"))
+            {
+                Take();
+                if (w == "over") Take();
+                return;
+            }
+
             if (w == "counterchanged" || w == "cotised")
             {
                 Take(WordStatus.Unsupported, $"'{w}' here isn't supported yet");
@@ -460,6 +507,14 @@ namespace ValheimHeraldryMod.Heraldry
 
             string w = Cur;
 
+            // A game item in quotes: "a \"bronze axe\" or"
+            if (IsQuoted(w))
+                return QuotedItem(countTok, count);
+
+            // A charge from a charge pack: "three [wolves] rampant sable"
+            if (IsBracketed(w))
+                return PackCharge(countTok, count);
+
             // Plain-English order: "a gold bend". Blazon puts the tincture after; accept it but say so.
             Tincture early = null;
             if ((Lexicon.Tinctures.ContainsKey(w) || (w.Length == 7 && w[0] == '#')) && Peek(1) != null &&
@@ -492,17 +547,19 @@ namespace ValheimHeraldryMod.Heraldry
             // Possessive heads: "a stag's head caboshed"
             if ((w.EndsWith("'s") || w.EndsWith("s'")) && (Peek(1) == "head" || Peek(1) == "heads"))
             {
-                string animal = w.EndsWith("'s") ? w.Substring(0, w.Length - 2) : w.Substring(0, w.Length - 2);
+                string animal = w.Substring(0, w.Length - 2); // "stag's" and "stags'" both lose two characters
                 var c = new Charge { Count = count, Noun = animal + "'s head" };
-                Take(WordStatus.NotDrawnYet, NeedsArt);
-                Take(WordStatus.NotDrawnYet);
+                SetHeadArt(c, w.EndsWith("s'") ? animal + "s" : animal, animal);
+                Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, c.Drawable ? null : NeedsArt);
+                Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet);
                 return FinishCharge(c, null);
             }
 
             if (Lexicon.Charges.TryGetValue(w, out var ce) || (count > 1 && (w == "saltire" || w == "cross")))
             {
                 if (ce == null) ce = new Lexicon.ChargeEntry { Singular = w };
-                bool drawable = Lexicon.DrawnCharges.Contains(ce.Singular);
+                Lexicon.NounIcons.TryGetValue(ce.Singular, out string art);
+                bool drawable = Lexicon.DrawnCharges.Contains(ce.Singular) || art != null;
                 var nounTok = Take(drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, drawable ? null : NeedsArt);
                 if (ce.PassableNote != null)
                     Mark(nounTok, WordStatus.Passable, ce.PassableNote);
@@ -515,13 +572,13 @@ namespace ValheimHeraldryMod.Heraldry
                     Mark(countTok, WordStatus.Wrong, "at most twenty");
                     count = 20;
                 }
-                var c = new Charge { Count = count, Noun = ce.Singular, Drawable = drawable };
+                var c = new Charge { Count = count, Noun = ce.Singular, Drawable = drawable, ArtKey = art };
                 if (Cur == "head" || Cur == "heads") // "three stags' heads" (the apostrophe is trimmed off)
                 {
-                    Take(WordStatus.NotDrawnYet);
-                    Mark(nounTok, WordStatus.NotDrawnYet, NeedsArt);
                     c.Noun += "'s head";
-                    c.Drawable = false;
+                    SetHeadArt(c, w, ce.Singular);
+                    Take(c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet);
+                    Mark(nounTok, c.Drawable ? WordStatus.Correct : WordStatus.NotDrawnYet, c.Drawable ? null : NeedsArt);
                 }
                 if (w == "rune" && Cur != null && !Lexicon.Tinctures.ContainsKey(Cur))
                     c.Noun = "rune " + Take(WordStatus.NotDrawnYet).Text; // "a rune Algiz sable"
@@ -534,6 +591,15 @@ namespace ValheimHeraldryMod.Heraldry
                 return null;
             }
 
+            // A trophy by its internal name without quotes still works, but quotes are the way to name game items
+            if (w.Length > 6 && w.StartsWith("trophy") && IsLetters(w))
+            {
+                string asWritten = CurTok.Note.Word;
+                Take(WordStatus.Passable, $"write game items in quotes: \"{asWritten}\"");
+                var c = new Charge { Count = Math.Min(count, 20), Noun = w, ArtKey = w, Drawable = true };
+                return FinishCharge(c, null);
+            }
+
             // Unknown noun
             var bad = Take(WordStatus.Wrong);
             MarkUnknown(bad, countTok != null);
@@ -542,6 +608,116 @@ namespace ValheimHeraldryMod.Heraldry
             while (!AtEnd && (Lexicon.Attitudes.Contains(Cur) || Lexicon.ChargeDetails.Contains(Cur))) Take();
             if (Cur != null && Lexicon.Tinctures.ContainsKey(Cur)) Take();
             return null;
+        }
+
+        /// <summary>
+        ///     A pack charge. Its attitudes pick the drawing ("[wolf] rampant" vs "[wolf] passant"), so the name is
+        ///     resolved after they're read. Unknown names are marked, and still drawn as the fallback roundel so
+        ///     players without the pack see that something belongs there.
+        /// </summary>
+        private Charge PackCharge(Tok countTok, int count)
+        {
+            var tok = CurTok;
+            string name = tok.Text.Substring(1, tok.Text.Length - 2);
+            pos++;
+            if (tok.Note.Status == WordStatus.Wrong) return null; // unclosed bracket, already explained
+            if (name.Length == 0)
+            {
+                Mark(tok, WordStatus.Wrong, "empty brackets: put a pack charge's name inside, e.g. [wolf]");
+                return null;
+            }
+            if (count > 20)
+            {
+                Mark(countTok, WordStatus.Wrong, "at most twenty");
+                count = 20;
+            }
+            Mark(tok, WordStatus.Correct);
+            var c = new Charge { Count = count, Noun = name, PackName = name, Drawable = true };
+            attitudeToks.Clear();
+            FinishCharge(c, null);
+
+            var packs = Lexicon.Packs;
+            string unmatched = null;
+            c.ArtKey = packs?.Resolve(name, c.Attitudes, out unmatched);
+            if (c.ArtKey == null)
+            {
+                string s = packs?.Suggest(name);
+                Mark(tok, WordStatus.Wrong, s != null
+                    ? $"no charge [{name}] in your charge packs: did you mean [{s}]?"
+                    : $"no charge [{name}] in your charge packs; shown as a placeholder roundel");
+                return c;
+            }
+            foreach (var at in attitudeToks)
+                if (at.Text == unmatched)
+                    Mark(at, WordStatus.NotDrawnYet, $"no {unmatched} drawing of [{name}] in your packs; using the one there is");
+                else if (!Lexicon.IsFlip(at.Text))
+                    Mark(at, WordStatus.Correct);
+            return c;
+        }
+
+        private readonly List<Tok> attitudeToks = new List<Tok>();
+
+        /// <summary>What a picture charge's mask adds: disarmed (no claws), morné (no claws or tongue), plain (no mask).</summary>
+        private bool TryMaskWord(Charge c)
+        {
+            if (Cur != "disarmed" && Cur != "morne" && Cur != "plain") return false;
+            var mt = Take();
+            if (c.ArtKey == null && c.PackName == null)
+                Mark(mt, WordStatus.Passable, $"'{mt.Text}' only changes picture charges; a {c.Noun} has no claws or tongue to leave off");
+            else c.Mask = mt.Text == "disarmed" ? MaskMode.Disarmed : mt.Text == "morne" ? MaskMode.Morne : MaskMode.Plain;
+            return true;
+        }
+
+        /// <summary>A quoted game item: checked against the game's items when a world is loaded.</summary>
+        private Charge QuotedItem(Tok countTok, int count)
+        {
+            var tok = CurTok;
+            string name = tok.Text.Substring(1, tok.Text.Length - 2);
+            pos++;
+            if (tok.Note.Status == WordStatus.Wrong) return null; // unclosed quote, already explained
+            if (name.Length == 0)
+            {
+                Mark(tok, WordStatus.Wrong, "empty quotes: put a game item's name inside, e.g. \"wood\"");
+                return null;
+            }
+            string key = "item:" + name;
+            var items = Lexicon.GameItems;
+            if (items != null && items.Ready)
+            {
+                key = items.Find(name);
+                if (key == null)
+                {
+                    string s = items.Suggest(name);
+                    Mark(tok, WordStatus.Wrong, s != null
+                        ? $"no game item called \"{name}\": did you mean \"{s}\"?"
+                        : $"no game item called \"{name}\" (use the name its tooltip shows)");
+                    return null;
+                }
+            }
+            Mark(tok, WordStatus.Correct);
+            if (count > 20)
+            {
+                Mark(countTok, WordStatus.Wrong, "at most twenty");
+                count = 20;
+            }
+            return FinishCharge(new Charge { Count = count, Noun = name, ArtKey = key, Drawable = true }, null);
+        }
+
+        /// <summary>"a wolf's head": the trophy icon for that animal, if there is one.</summary>
+        private static void SetHeadArt(Charge c, string asTyped, string singular)
+        {
+            if (Lexicon.HeadIcons.TryGetValue(asTyped, out var key) || Lexicon.HeadIcons.TryGetValue(singular, out key))
+            {
+                c.ArtKey = key;
+                c.Drawable = true;
+            }
+            else c.Drawable = false;
+        }
+
+        private static bool IsLetters(string s)
+        {
+            foreach (char ch in s) if (ch < 'a' || ch > 'z') return false;
+            return true;
         }
 
         private Ordinary FinishOrdinary(Lexicon.OrdinaryEntry oe, Tok countTok, int count, bool hadCount)
@@ -711,6 +887,7 @@ namespace ValheimHeraldryMod.Heraldry
                     else c.Points = n;
                     continue;
                 }
+                if (TryMaskWord(c)) continue;
                 if (Cur == "pierced")
                 {
                     var pt = Take();
@@ -726,8 +903,11 @@ namespace ValheimHeraldryMod.Heraldry
                 if (TryRows(c)) continue;
                 if (Lexicon.Attitudes.Contains(Cur))
                 {
+                    attitudeToks.Add(CurTok);
                     string a = Cur;
-                    bool drawnHere = c.Drawable && (a == "inverted" || a == "reversed" || a == "couped");
+                    // Flips work on any drawn charge; trophy heads already face the front (caboshed, affronté)
+                    bool drawnHere = c.Drawable && (Lexicon.IsFlip(a) || (a == "couped" && c.ArtKey == null) ||
+                                                    (c.ArtKey != null && (a == "caboshed" || a == "affronte")));
                     c.Attitudes.Add(Take(drawnHere ? WordStatus.Correct : WordStatus.NotDrawnYet,
                         drawnHere || !c.Drawable ? null : $"'{a}' isn't drawn for a {c.Noun}").Text);
                     continue;
@@ -756,13 +936,17 @@ namespace ValheimHeraldryMod.Heraldry
                 var tincTok = CurTok;
                 if (!TryTincture(out var t, allowProper: true, allowCounterchanged: true))
                 {
-                    result.Messages.Add($"'{c.Noun}' needs a tincture.");
+                    if (c.ArtKey != null && pos > 0 && toks[pos - 1].Note.Status == WordStatus.Correct)
+                        Mark(toks[pos - 1], WordStatus.Passable, "no tincture given: drawn in its own colours (blazon this as 'proper')");
+                    else if (c.ArtKey == null)
+                        result.Messages.Add($"'{c.Noun}' needs a tincture.");
                 }
                 else if (t.Kind == TinctureKind.Proper && Lexicon.IsGeometric(c.Noun))
                     Mark(tincTok, WordStatus.Wrong, $"a {c.Noun} has no natural colour; give it a tincture");
                 else c.Tincture = t;
             }
             ParseStyle(c.Style, beforeTincture: false);
+            while (TryMaskWord(c)) { }
             TryRows(c);
             if (c.Rows != null && c.Placement != Placement.None && c.Placement != Placement.Between && c.Placement != Placement.On)
                 c.Rows = null; // "in pale" wins over a row list
@@ -772,12 +956,27 @@ namespace ValheimHeraldryMod.Heraldry
                 awaitingTincture.Clear();
             }
 
-            // "armed and langued gules"
+            // "armed and langued gules", "armed or langued gules": the details named so far share the next tincture.
+            // Picture charges draw armed/langued from their mask; other details are understood but not drawn.
+            var pending = new List<Tok>();
             while (!AtEnd && Lexicon.ChargeDetails.Contains(Cur))
             {
-                Take(WordStatus.NotDrawnYet);
+                var dt = CurTok;
+                bool drawn = c.ArtKey != null || c.PackName != null;
+                bool layer = dt.Text == "langued" || Lexicon.IsArmedWord(dt.Text);
+                Take(drawn && layer ? WordStatus.Correct : WordStatus.NotDrawnYet,
+                    drawn && !layer ? $"'{dt.Text}' isn't drawn yet" : null);
+                pending.Add(dt);
                 if (Cur == "and" && Peek(1) != null && Lexicon.ChargeDetails.Contains(Peek(1))) { Take(); continue; }
-                TryTincture(out _, true, false);
+                if (TryTincture(out var dtTinc, true, false))
+                    foreach (var p in pending)
+                    {
+                        if (p.Text == "langued") c.Langued = dtTinc;
+                        else if (Lexicon.IsArmedWord(p.Text)) c.Armed = dtTinc;
+                    }
+                else
+                    Mark(dt, WordStatus.Wrong, $"{dt.Text} in what? e.g. '{dt.Text} gules'");
+                pending.Clear();
             }
 
             result.Charges.Add(c);
@@ -826,7 +1025,7 @@ namespace ValheimHeraldryMod.Heraldry
                     Take(WordStatus.Wrong, "'proper' (natural colours) is only for charges");
                     return false;
                 }
-                Take(WordStatus.NotDrawnYet);
+                Take();
                 t = new Tincture { Kind = TinctureKind.Proper, Name = "proper" };
                 return true;
             }

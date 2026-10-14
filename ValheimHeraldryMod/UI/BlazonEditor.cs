@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using ValheimHeraldryMod.Banners;
 using ValheimHeraldryMod.Heraldry;
+using ValheimHeraldryMod.Rendering;
 
 namespace ValheimHeraldryMod.UI
 {
@@ -459,6 +460,7 @@ namespace ValheimHeraldryMod.UI
         {
             renderAt = -1f;
             var b = parsed;
+            IconArt.EnsureFor(b);
             int w = previewW, h = previewH;
             var mask = previewMask;
             previewJob = Task.Run(() => FieldRenderer.Render(b, w, h, mask));
