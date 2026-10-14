@@ -71,7 +71,7 @@ namespace ValheimHeraldryMod.Shields
             if (TaggedPrefabs.TryGetValue(prefab.name, out bool has)) return has;
             has = Find(prefab, out _, out _);
             TaggedPrefabs[prefab.name] = has;
-            if (has) Jotunn.Logger.LogInfo($"[Heraldry] '{prefab.name}' has a tagged heraldry face.");
+            if (has) Jotunn.Logger.LogDebug($"[Heraldry] '{prefab.name}' has a tagged heraldry face.");
             return has;
         }
 

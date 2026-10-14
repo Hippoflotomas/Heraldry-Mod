@@ -139,7 +139,7 @@ namespace ValheimHeraldryMod.Station
                 station.m_icon = icon;
             }
             PieceManager.Instance.AddPiece(new CustomPiece(prefab, false, config));
-            Jotunn.Logger.LogInfo($"[Heraldry] Registered the herald's table ({parts.Count} parts, footprint {bounds.size.x:0.00} x {bounds.size.z:0.00} m).");
+            Jotunn.Logger.LogDebug($"[Heraldry] Registered the herald's table ({parts.Count} parts, footprint {bounds.size.x:0.00} x {bounds.size.z:0.00} m).");
         }
 
         /// <summary>Vanilla materials for the model's slots: wood from the wood wall, metal from the iron wall.</summary>
@@ -159,7 +159,7 @@ namespace ValheimHeraldryMod.Station
                 var found = all.FirstOrDefault(m => string.Equals(m.name, materialName, System.StringComparison.OrdinalIgnoreCase))
                             ?? all.FirstOrDefault(m => m.name.StartsWith(materialName, System.StringComparison.OrdinalIgnoreCase))
                             ?? all.FirstOrDefault(m => m.name.IndexOf("snow", System.StringComparison.OrdinalIgnoreCase) < 0);
-                Jotunn.Logger.LogInfo($"[Heraldry] Table material from {prefabName}: {(found != null ? $"'{found.name}' ({found.shader.name})" : "none")}" +
+                Jotunn.Logger.LogDebug($"[Heraldry] Table material from {prefabName}: {(found != null ? $"'{found.name}' ({found.shader.name})" : "none")}" +
                                       $"; it has {string.Join(", ", all.Select(m => m.name).Distinct())}.");
                 return found;
             }

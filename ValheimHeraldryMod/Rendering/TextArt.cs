@@ -10,8 +10,7 @@ namespace ValheimHeraldryMod.Rendering
 {
     /// <summary>
     ///     Lettering for inscriptions, from the game's own Norse font (TextMeshPro asset "Valheim-Norse", which has
-    ///     Latin letters and the runic block): the glyphs are added to the font's dynamic atlas, read back from the
-    ///     graphics card, and laid out into one distance-field mask per text (TextArtLibrary), so letters stay crisp
+    ///     Latin letters and the runic block): the glyphs are added to the font's dynamic atlas, read from the atlas, and laid out into one distance-field mask per text (TextArtLibrary), so letters stay crisp
     ///     at any size. Main thread, before arms are drawn. Also decides which mottos this player may see
     ///     (the server's ShowMottos; admins always see them; secret codes' own words always show).
     /// </summary>
@@ -20,6 +19,7 @@ namespace ValheimHeraldryMod.Rendering
         private static TMP_FontAsset font;
         private static bool fontMissingLogged;
         private static readonly HashSet<string> Failed = new HashSet<string>();
+        private static readonly HashSet<char> MissingLogged = new HashSet<char>();
 
         /// <summary>Mottos are hidden from this player (the server's setting, and not an admin).</summary>
         public static bool HideMottos =>
@@ -70,7 +70,7 @@ namespace ValheimHeraldryMod.Rendering
                                          "Fonts here: " + string.Join(", ", all.Select(f => f.name)));
             }
             else if (font != null)
-                Jotunn.Logger.LogInfo($"[Heraldry] Lettering uses the font '{font.name}' ({font.atlasRenderMode}, padding {font.atlasPadding}).");
+                Jotunn.Logger.LogDebug($"[Heraldry] Lettering uses the font '{font.name}' ({font.atlasRenderMode}, padding {font.atlasPadding}).");
             return font;
         }
 
@@ -80,9 +80,13 @@ namespace ValheimHeraldryMod.Rendering
         {
             var f = Font();
             if (f == null) return false;
-            f.TryAddCharacters(text, out string missing);
-            if (!string.IsNullOrEmpty(missing))
-                Jotunn.Logger.LogWarning($"[Heraldry] The Norse font has no letters for '{missing}' (in '{text}'); they're left out.");
+            f.TryAddCharacters(text, out _); // its "missing" list also names letters already in the atlas, so check ourselves
+            foreach (char c in text)
+            {
+                if (char.IsWhiteSpace(c) || char.IsSurrogate(c) || f.characterLookupTable.ContainsKey(c)) continue;
+                if (MissingLogged.Add(c))
+                    Jotunn.Logger.LogWarning($"[Heraldry] The Norse font has no letter '{c}' (U+{(int)c:X4}); it's left out of inscriptions.");
+            }
 
             var face = f.faceInfo;
             int pad = f.atlasPadding;

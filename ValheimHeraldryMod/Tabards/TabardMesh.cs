@@ -96,7 +96,7 @@ namespace ValheimHeraldryMod.Tabards
 
                     Front = MakePanel(uv, idx, true);
                     Back = MakePanel(uv, idx, false);
-                    Jotunn.Logger.LogInfo($"[Heraldry] Tabard model: {n} vertices, {idx.Length / 3} triangles, {bones} bones, {shapes} body shape(s); " +
+                    Jotunn.Logger.LogDebug($"[Heraldry] Tabard model: {n} vertices, {idx.Length / 3} triangles, {bones} bones, {shapes} body shape(s); " +
                                           $"front panel aspect {Front.Aspect:F2}, back {Back.Aspect:F2}.");
                     return true;
                 }

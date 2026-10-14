@@ -1,9 +1,15 @@
 # Example charge pack
 
-Copy the `test-beasts` folder (or a .zip of it) into `BepInEx/config/Heraldry/Charges/` (the folder is created the first time the mod runs).
+Copy the `test-beasts` folder (or a .zip of it) into `Documents\ValheimHeraldryMod\Charges\` (created the first time
+the mod runs), or type `heraldry_reload` in the console if the game is already running.
 Then: `Or, a [wolf] passant sable armed and langued gules`.
 
+The simplest charge needs no manifest at all: a PNG in the Charges folder (or in a pack folder) is a charge named after
+its file (`black_dog.png` → `[black dog]`), with `black_dog.mask.png` as its optional mask.
+
 ## manifest.json
+
+A manifest is for several names or attitudes per charge, or for atlases.
 
 ```json
 {
@@ -29,21 +35,20 @@ Then: `Or, a [wolf] passant sable armed and langued gules`.
 ```
 (JSON itself has no comments; they're only here to explain.)
 
-- Several drawings can share a name with different attitudes: `[wolf] rampant` picks the rampant one. A blazon asking for an attitude the pack doesn't have uses the closest drawing and says so.
-- Limits: 1024 px per charge or cell, 4096 px per atlas, 16 MB per file. A bad image skips that one charge (see the log).
+- Several drawings can share a name with different attitudes: `[wolf] rampant` picks the rampant one. A blazon asking
+  for an attitude the pack doesn't have uses the closest drawing and says so.
+- Limits: 1024 px per charge or cell, 4096 px per atlas. A bad image skips that one charge (see the log).
 - Mask layers can go outside the colour image (a tongue in an open mouth); they're part of the outline.
 
 ## On a server
 
-A server sends the packs in its own `BepInEx/config/Heraldry/Charges/` to players (folders are zipped for sending).
-Admin settings: `MaxChargePackMB` (per pack, default 8) and `MaxChargePacksTotalMB` (default 32).
+Every charge travels on its own, identified by a fingerprint of its picture, so two players' different "wolf"
+pictures never get mixed up. Arms carry the fingerprints of the pictures they use.
 
-Players:
-1. Turn on `ReceiveServerPacks` in the Heraldry config (off by default).
-2. On joining, they're told which packs the server offers. `heraldry_packs` in the console (F5) lists them.
-3. `heraldry_trust <pack>` (or `heraldry_trust all`) allows a pack. Trust is for that exact pack: if the server
-   changes it, players are asked again. `heraldry_untrust <pack>` forgets it.
-4. Allowed packs download once and are cached by fingerprint (`BepInEx/cache/Heraldry/packs`).
-
-On someone else's server only the server's packs are used, so everyone sees the same arms. Your own packs are used in
-single player and when you host.
+- A server's own charges go in its `Documents\ValheimHeraldryMod\ServerCharges` folder (or the folder set in
+  `ServerChargeFolder`).
+- Players' own charges are passed on through the server when someone uses them (`ShareCharges`, on by default).
+- Players are told when they meet a picture they don't have; `heraldry_pending` lists them, `heraldry_get <name>` or
+  `heraldry_get all` downloads them into `Documents\ValheimHeraldryMod\Downloaded`. `AutoGetServerCharges` fetches the
+  server's own charges without asking.
+- `heraldry_block` hides a picture for you; admins can `heraldry_blacklist` it for the whole server.

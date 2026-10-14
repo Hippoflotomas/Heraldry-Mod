@@ -102,7 +102,7 @@ namespace ValheimHeraldryMod.Shields
                 face = null;
             }
             Cache[key] = face;
-            if (face != null) Jotunn.Logger.LogInfo($"[Heraldry] Shield face for '{prefabName}': {face.Note}");
+            if (face != null) Jotunn.Logger.LogDebug($"[Heraldry] Shield face for '{prefabName}': {face.Note}");
             return face;
         }
 

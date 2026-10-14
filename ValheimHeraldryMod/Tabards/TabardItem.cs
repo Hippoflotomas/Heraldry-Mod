@@ -86,7 +86,7 @@ namespace ValheimHeraldryMod.Tabards
                 },
             };
             ItemManager.Instance.AddItem(new CustomItem(prefab, false, config));
-            Jotunn.Logger.LogInfo("[Heraldry] Registered the heraldic tabard.");
+            Jotunn.Logger.LogDebug("[Heraldry] Registered the heraldic tabard.");
         }
 
         /// <summary>
@@ -115,7 +115,7 @@ namespace ValheimHeraldryMod.Tabards
             if (template.HasProperty("_Color")) template.SetColor("_Color", Color.white);
             template.mainTextureScale = Vector2.one;
             template.mainTextureOffset = Vector2.zero;
-            Jotunn.Logger.LogInfo($"[Heraldry] Tabard material based on '{source.name}' ({source.shader.name}).");
+            Jotunn.Logger.LogDebug($"[Heraldry] Tabard material based on '{source.name}' ({source.shader.name}).");
         }
 
         public static Material CreateMaterial(Texture2D mainTex, string name)

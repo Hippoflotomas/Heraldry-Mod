@@ -1,7 +1,7 @@
-﻿{
+{
   "name": "ValheimHeraldryMod",
-  "description": "Write a heraldic blazon and see it painted on banners, shields and tabards.",
-  "version_number": "0.0.1",
+  "description": "Write a coat of arms in heraldic blazon (or pick it from dropdowns) and see it painted on banners, shields and tabards, with your own charge pictures shared between players.",
+  "version_number": "1.0.0",
   "website_url": "https://github.com/Hippoflotomas/Heraldry-Mod",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",

@@ -77,7 +77,7 @@ namespace ValheimHeraldryMod.Rendering
                         }
                     if (logo.GateOnly) px = TopCluster(px, ref w, ref h);
                     ChargeArtLibrary.Register(logo.Key, px, w, h, deriveLines: false);
-                    Jotunn.Logger.LogInfo($"[Heraldry] Logo '{logo.Sprite}' captured for [{logo.Key}] ({w}x{h}).");
+                    Jotunn.Logger.LogDebug($"[Heraldry] Logo '{logo.Sprite}' captured for [{logo.Key}] ({w}x{h}).");
                 }
                 catch (Exception ex)
                 {

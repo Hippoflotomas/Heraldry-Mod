@@ -167,7 +167,13 @@ namespace ValheimHeraldryMod.Heraldry
             {
                 int covered = 0;
                 for (int x = 0; x < w; x++) if (outline[y * w + x]) covered++;
-                if (covered < w * 0.98f) return y;
+                if (covered < w * 0.98f)
+                {
+                    // A shield that tapers for most of its height (a heater) is laid out on all of it, like real
+                    // heraldry; only a long straight body (a banner, a tower shield) ends at its shoulders
+                    if (arrangement == Arrangement.Compact && y < h * 0.6f) return h;
+                    return y;
+                }
             }
             return h;
         }

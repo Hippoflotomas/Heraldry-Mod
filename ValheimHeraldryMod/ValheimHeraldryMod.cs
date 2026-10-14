@@ -13,7 +13,7 @@ namespace ValheimHeraldryMod
     {
         public const string PluginGUID = "com.hippotech.valheimheraldrymod";
         public const string PluginName = "Valheim Heraldry Mod";
-        public const string PluginVersion = "0.0.1";
+        public const string PluginVersion = "1.0.0";
 
         // https://valheim-modding.github.io/Jotunn/tutorials/localization.html
         /// <summary>The plugin, for coroutines.</summary>
@@ -56,9 +56,6 @@ namespace ValheimHeraldryMod
                     Jotunn.Logger.LogError($"[Heraldry] Patch {type.Name} failed: {ex.Message}");
                 }
             }
-
-            // Dev-only: readback prototype (icons + fonts). Remove once the charge pipeline is settled.
-            CommandManager.Instance.AddConsoleCommand(new Dev.ReadbackProbe());
         }
 
         private void Update()

@@ -124,7 +124,7 @@ namespace ValheimHeraldryMod.Banners
             var icon = Icon(prefab);
             if (icon != null) config.Icon = icon;
             PieceManager.Instance.AddPiece(new CustomPiece(prefab, false, config));
-            Jotunn.Logger.LogInfo($"[Heraldry] Registered the large standard ({bounds.size.x:0.00} x {bounds.size.y:0.00} m); " +
+            Jotunn.Logger.LogDebug($"[Heraldry] Registered the large standard ({bounds.size.x:0.00} x {bounds.size.y:0.00} m); " +
                                   $"its cloth is a tagged face, painted through the tagged-piece path.");
         }
 
@@ -140,6 +140,7 @@ namespace ValheimHeraldryMod.Banners
                 vanilla = TableRegistry.VanillaMaterials()["Wood"];
             }
             var m = new Material(vanilla) { name = Shields.TaggedFace.FaceTag };
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return m; // dedicated server: nothing is drawn
             HeraldicBanner.StripVanillaArt(m);
             var linen = new Texture2D(4, 4, TextureFormat.RGBA32, false) { name = "Heraldry_Linen" };
             linen.SetPixels32(Enumerable.Repeat(Rendering.BlazonTextureCache.Linen, 16).ToArray());

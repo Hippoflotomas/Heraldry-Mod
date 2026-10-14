@@ -29,11 +29,26 @@ namespace ValheimHeraldryMod.Tabards
         {
             if (lookedUp) return;
             lookedUp = true;
-            var items = AccessTools.TypeByName("TabardShare.TabardItems");
+            var items = FindType("TabardShare.TabardItems");
             otherIsTabard = items != null ? AccessTools.Method(items, "IsTabard", new[] { typeof(ItemDrop.ItemData) }) : null;
-            otherWearer = AccessTools.TypeByName("TabardShare.TabardWearer");
+            otherWearer = FindType("TabardShare.TabardWearer");
             otherWearerItem = otherWearer != null ? AccessTools.Field(otherWearer, "Item") : null;
             if (otherIsTabard != null) Jotunn.Logger.LogInfo("[Heraldry] TabardShare found: its tabards and ours share one slot.");
+        }
+
+        /// <summary>A type by full name from the loaded assemblies, quietly (AccessTools.TypeByName logs a warning when it's absent).</summary>
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var t = assembly.GetType(fullName, false);
+                    if (t != null) return t;
+                }
+                catch { /* dynamic or unloadable assemblies */ }
+            }
+            return null;
         }
 
         private static bool IsOtherTabard(ItemDrop.ItemData item)

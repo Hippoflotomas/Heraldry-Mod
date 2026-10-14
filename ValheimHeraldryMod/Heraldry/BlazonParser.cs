@@ -1123,6 +1123,24 @@ namespace ValheimHeraldryMod.Heraldry
                         drawnHere || !c.Drawable ? null : $"'{a}' isn't drawn for a {c.Noun}").Text);
                     continue;
                 }
+                // "three roundels in pale argent": the arrangement before the tincture (the usual order)
+                if (Cur == "in" && !CurTok.AfterComma && c.Placement == Placement.None && Peek(1) != null &&
+                    (IsPlacementWord(Peek(1)) || IsPointStart(Peek(1), Peek(2))))
+                {
+                    Take();
+                    if (Cur == "the") Take();
+                    var placeTok = Take();
+                    var place = PointFor(placeTok) ?? PlacementFor(placeTok.Text);
+                    if (place == Placement.Bend && Cur == "sinister")
+                    {
+                        Take();
+                        place = Placement.BendSinister;
+                    }
+                    if (place == Placement.None)
+                        Mark(placeTok, WordStatus.Unsupported, $"'in {placeTok.Text}' isn't drawn yet; the charges keep their usual arrangement");
+                    c.Placement = place;
+                    continue;
+                }
                 if (Cur == "facing" && (Peek(1) == "left" || Peek(1) == "sinister"))
                 {
                     Take(WordStatus.Passable, "the heraldic term is 'contourné'");

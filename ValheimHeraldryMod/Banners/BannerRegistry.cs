@@ -78,7 +78,7 @@ namespace ValheimHeraldryMod.Banners
             };
             PieceManager.Instance.AddPiece(new CustomPiece(prefab, false, config));
 
-            Jotunn.Logger.LogInfo($"[Heraldry] Registered '{prefabName}' from '{source}': {cloths} cloth mesh(es), " +
+            Jotunn.Logger.LogDebug($"[Heraldry] Registered '{prefabName}' from '{source}': {cloths} cloth mesh(es), " +
                                   $"width:height {widthOverHeight:0.00}, e.g. {Mathf.RoundToInt(1024 * widthOverHeight)}x1024 at full resolution; " +
                                   $"top {banner.m_hiddenTop:P1} hidden by the beam ({Mathf.RoundToInt(1024 * banner.m_hiddenTop)} of 1024 rows).");
         }
@@ -144,7 +144,7 @@ namespace ValheimHeraldryMod.Banners
             }
             if (beamName == null)
             {
-                Jotunn.Logger.LogInfo($"[Heraldry] '{prefab.name}': nothing found across the top of the cloth; using all of it.");
+                Jotunn.Logger.LogDebug($"[Heraldry] '{prefab.name}': nothing found across the top of the cloth; using all of it.");
                 return 0f;
             }
             float hidden = (cb.max.y - beamBottom) / cb.size.y;
