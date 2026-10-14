@@ -29,6 +29,7 @@ namespace ValheimHeraldryMod.Banners
         private ZNetView nview;
         private readonly List<Material> materials = new List<Material>();
         private uint lastRevision = uint.MaxValue;
+        private int lastPackGeneration = -1; // pack charges ("[wolf]") redraw when packs arrive or change
         private string currentText;   // normalised; null = nothing rendered yet
         private string cacheKey;
         private string hoverProblemFor;   // text the cached problem belongs to
@@ -92,9 +93,11 @@ namespace ValheimHeraldryMod.Banners
             var zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo != null)
             {
-                if (zdo.DataRevision == lastRevision && currentText != null)
+                bool packsChanged = currentText != null && currentText.IndexOf('[') >= 0 && lastPackGeneration != ChargePacks.Generation;
+                if (zdo.DataRevision == lastRevision && currentText != null && !packsChanged)
                     return;
                 lastRevision = zdo.DataRevision;
+                lastPackGeneration = ChargePacks.Generation;
             }
 
             string text = BlazonTextureCache.Normalise(zdo?.GetString(BlazonZdoKey, "") ?? "");
@@ -122,9 +125,10 @@ namespace ValheimHeraldryMod.Banners
             string text = GetText();
             string shown = string.IsNullOrEmpty(text) ? "<i>unpainted</i>" : $"\"{text}\"";
             // Until the editing window exists, show the first problem the parser found (cached per text).
-            if (text != hoverProblemFor)
+            string problemKey = text + "|" + ChargePacks.Generation;
+            if (problemKey != hoverProblemFor)
             {
-                hoverProblemFor = text;
+                hoverProblemFor = problemKey;
                 hoverProblem = string.IsNullOrEmpty(text) ? null : Heraldry.BlazonParser.FirstProblem(Heraldry.BlazonParser.Parse(text));
             }
             if (hoverProblem != null)

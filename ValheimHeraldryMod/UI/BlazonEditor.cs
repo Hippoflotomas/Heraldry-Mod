@@ -25,6 +25,7 @@ namespace ValheimHeraldryMod.UI
         private const float PanelW = 1060, PanelH = 720;
         private const float PreviewH = 560, PreviewX = 30, PreviewY = 70;
         private const float RightX = 310, RightW = 720;
+        private const float ChoiceW = 420, ChoiceRowH = 40;
         private const int FontSize = 20;
         private const float LineSpacing = 1.7f;   // room for the swatches above each line
         private const float TopPad = 12f;          // room for swatches above the first line
@@ -45,7 +46,11 @@ namespace ValheimHeraldryMod.UI
         private InputField saveName;
         private RectTransform savedContent;
 
-        private HeraldicBanner banner;
+        private IBlazonTarget target;
+        private Text title, applyLabel, choiceLabel;
+        private Image choiceIcon;
+        private GameObject choiceRow, choiceList;
+        private RectTransform choiceListContent;
         private float aspect = 0.4f;
         private Blazon parsed;
         private readonly List<KeyValuePair<Rect, string>> wordRects = new List<KeyValuePair<Rect, string>>();
@@ -67,7 +72,9 @@ namespace ValheimHeraldryMod.UI
 
         public static bool IsOpen => instance != null && instance.panel != null && instance.panel.activeSelf;
 
-        public static void Open(HeraldicBanner target)
+        public static void Open(HeraldicBanner banner) => Open(new BannerTarget(banner));
+
+        public static void Open(IBlazonTarget target)
         {
             if (GUIManager.Instance == null || GUIManager.CustomGUIFront == null) return;
             if (instance == null)
@@ -92,7 +99,26 @@ namespace ValheimHeraldryMod.UI
                 Vector2.zero, PanelW, PanelH, true);
             panel.name = "HeraldryBlazonEditor";
 
-            Label("Heraldic banner", 30, 18, 600, 40, 26, gui.ValheimOrange);
+            title = Label("Heraldic banner", 30, 18, 600, 40, 26, gui.ValheimOrange);
+
+            // ---- chooser (the herald's table: which shield) ----
+            // A drop-down: the chosen shield (icon and name) on a button; clicking it lists them all.
+            choiceRow = new GameObject("Chooser", typeof(RectTransform));
+            choiceRow.transform.SetParent(panel.transform, false);
+            Place(choiceRow.GetComponent<RectTransform>(), RightX + 300, 56, ChoiceW, 40);
+            var header = GUIManager.Instance.CreateButton("", choiceRow.transform, Vector2.zero, Vector2.zero, Vector2.zero, ChoiceW, 40);
+            Place(header.GetComponent<RectTransform>(), 0, 0, ChoiceW, 40);
+            header.GetComponent<Button>().onClick.AddListener(ToggleChoiceList);
+            choiceIcon = Icon(header.transform, 6, 4, 32);
+            choiceLabel = header.GetComponentInChildren<Text>();
+            choiceLabel.alignment = TextAnchor.MiddleLeft;
+            choiceLabel.fontSize = 17;
+            choiceLabel.supportRichText = true;
+            var labelRt = choiceLabel.rectTransform;
+            labelRt.anchorMin = Vector2.zero; labelRt.anchorMax = Vector2.one;
+            labelRt.offsetMin = new Vector2(46, 0); labelRt.offsetMax = new Vector2(-30, 0);
+            var arrow = Label("\u25BC", ChoiceW - 28, 10, 22, 20, 14, Beige, header.transform);
+            arrow.alignment = TextAnchor.MiddleCenter;
 
             // ---- preview ----
             var frame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image));
@@ -160,7 +186,7 @@ namespace ValheimHeraldryMod.UI
             problems.verticalOverflow = VerticalWrapMode.Truncate;
 
             // ---- buttons ----
-            AddButton("Apply", RightX, 480, 150, 40, Apply);
+            applyLabel = AddButton("Apply", RightX, 480, 150, 40, Apply);
             AddButton("Cancel", RightX + 160, 480, 150, 40, Hide);
             status = Label("", RightX + 330, 488, RightW - 330, 28, 15, Beige);
 
@@ -182,6 +208,17 @@ namespace ValheimHeraldryMod.UI
             vlg.childForceExpandHeight = false; vlg.childForceExpandWidth = true;
             vlg.padding = new RectOffset(6, 6, 4, 4);
 
+            // ---- the chooser's list (built when opened, drawn over everything but the tooltip) ----
+            choiceList = gui.CreateScrollView(panel.transform, false, true, 8f, 4f, ColorBlock.defaultColorBlock,
+                new Color(0.08f, 0.06f, 0.05f, 0.97f), ChoiceW, 200);
+            choiceList.name = "ChooserList";
+            choiceListContent = choiceList.transform.Find("Scroll View/Viewport/Content") as RectTransform;
+            var listLayout = choiceListContent.GetComponent<VerticalLayoutGroup>();
+            listLayout.spacing = 2; listLayout.childControlHeight = true; listLayout.childControlWidth = true;
+            listLayout.childForceExpandHeight = false; listLayout.childForceExpandWidth = true;
+            listLayout.padding = new RectOffset(4, 4, 4, 4);
+            choiceList.SetActive(false);
+
             // ---- tooltip (last, so it draws on top) ----
             var tipGo = new GameObject("Tooltip", typeof(RectTransform), typeof(Image));
             tipGo.transform.SetParent(panel.transform, false);
@@ -201,12 +238,34 @@ namespace ValheimHeraldryMod.UI
 
         // ================================================================== show / hide
 
-        private void Show(HeraldicBanner target)
+        private void Show(IBlazonTarget newTarget)
         {
             if (panel == null) Build();
-            banner = target;
-            aspect = Mathf.Clamp(target.m_widthOverHeight, 0.2f, 2f);
+            target = newTarget;
+            title.text = target.Title;
+            applyLabel.text = target.ApplyLabel;
+            SetupShape();
 
+            choiceRow.SetActive(target.Choices != null);
+            choiceList.SetActive(false);
+            ShowChoice();
+            input.text = target.GetText();
+            saveName.text = "";
+            RefreshSaved();
+            status.text = target.Blocked ?? "";
+            panel.SetActive(true);
+            if (unblockAfterFrame >= 0) unblockAfterFrame = -1; // reopened before the release: keep the block
+            else GUIManager.BlockInput(true);
+            input.ActivateInputField();
+            input.MoveTextEnd(false);
+            OnTextChanged();
+            renderAt = 0f; // render the preview straight away
+        }
+
+        /// <summary>The preview's size and outline, from the target (for the table: the chosen shield's face).</summary>
+        private void SetupShape()
+        {
+            aspect = Mathf.Clamp(target.Aspect, 0.2f, 2f);
             // Preview sized to the banner's shape, with its real outline
             previewH = 400;
             previewW = Mathf.Max(16, Mathf.RoundToInt(previewH * aspect));
@@ -218,36 +277,99 @@ namespace ValheimHeraldryMod.UI
                 if (previewTexture != null) Destroy(previewTexture);
                 previewTexture = new Texture2D(previewW, previewH, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
             }
-            previewMask = OutlineMask.FromTriangles(target.m_outlineUV, target.m_outlineTriangles, previewW, previewH, target.m_hiddenTop);
+            previewMask = OutlineMask.FromTriangles(target.OutlineUV, target.OutlineTriangles, previewW, previewH, target.HiddenTop);
             preview.texture = previewTexture;
-
-            input.text = target.GetText();
-            saveName.text = "";
-            RefreshSaved();
-            status.text = "";
-            panel.SetActive(true);
-            if (unblockAfterFrame >= 0) unblockAfterFrame = -1; // reopened before the release: keep the block
-            else GUIManager.BlockInput(true);
-            input.ActivateInputField();
-            input.MoveTextEnd(false);
-            OnTextChanged();
-            renderAt = 0f; // render the preview straight away
         }
 
         private void Hide()
         {
             if (panel == null || !panel.activeSelf) return;
             panel.SetActive(false);
+            choiceList.SetActive(false);
             tooltip.transform.parent.gameObject.SetActive(false);
-            banner = null;
+            target = null;
             // Release next frame, so the Enter or Escape that closed us can't also open chat or the menu
             unblockAfterFrame = Time.frameCount;
         }
 
         private void Apply()
         {
-            if (banner != null) banner.SetText(input.text.Trim());
+            if (target == null) return;
+            if (target.Blocked != null)
+            {
+                status.text = target.Blocked;
+                return;
+            }
+            string message = target.Apply(input.text.Trim());
             Hide();
+            if (message != null) MessageHud.instance?.ShowMessage(MessageHud.MessageType.Center, message);
+        }
+
+        private void PickChoice(int index)
+        {
+            choiceList.SetActive(false);
+            var choices = target?.Choices;
+            if (choices == null || index < 0 || index >= choices.Count) return;
+            input.text = target.Choose(index);
+            SetupShape();
+            ShowChoice();
+            renderAt = 0f;
+        }
+
+        private void ShowChoice()
+        {
+            var choices = target?.Choices;
+            if (choices == null) return;
+            int i = Mathf.Max(0, target.Chosen);
+            var icons = target.ChoiceIcons;
+            choiceLabel.text = choices.Count == 0 ? "<color=#a0a0a0>no shields in your inventory</color>" : choices[i];
+            choiceIcon.sprite = choices.Count > 0 && icons != null && i < icons.Count ? icons[i] : null;
+            choiceIcon.enabled = choiceIcon.sprite != null;
+        }
+
+        private void ToggleChoiceList()
+        {
+            if (choiceList.activeSelf) { choiceList.SetActive(false); return; }
+            var choices = target?.Choices;
+            if (choices == null || choices.Count == 0) return;
+            var icons = target.ChoiceIcons;
+
+            foreach (Transform child in choiceListContent) Destroy(child.gameObject);
+            var gui = GUIManager.Instance;
+            for (int k = 0; k < choices.Count; k++)
+            {
+                int index = k;
+                var row = gui.CreateButton("", choiceListContent, Vector2.zero, Vector2.zero, Vector2.zero);
+                row.AddComponent<LayoutElement>().preferredHeight = ChoiceRowH;
+                row.GetComponent<Button>().onClick.AddListener(() => PickChoice(index));
+                var icon = Icon(row.transform, 6, 3, ChoiceRowH - 6);
+                icon.sprite = icons != null && k < icons.Count ? icons[k] : null;
+                icon.enabled = icon.sprite != null;
+                var text = row.GetComponentInChildren<Text>();
+                text.text = k == target.Chosen ? $"<color=#ffbf40>{choices[k]}</color>" : choices[k];
+                text.supportRichText = true;
+                text.fontSize = 16;
+                text.alignment = TextAnchor.MiddleLeft;
+                text.rectTransform.anchorMin = Vector2.zero; text.rectTransform.anchorMax = Vector2.one;
+                text.rectTransform.offsetMin = new Vector2(ChoiceRowH + 6, 0); text.rectTransform.offsetMax = new Vector2(-6, 0);
+            }
+
+            float height = Mathf.Min(choices.Count, 8) * (ChoiceRowH + 2) + 10;
+            Place(choiceList.GetComponent<RectTransform>(), RightX + 300, 98, ChoiceW, height);
+            choiceList.SetActive(true);
+            choiceList.transform.SetAsLastSibling();
+            tooltip.transform.parent.SetAsLastSibling();
+        }
+
+        private static Image Icon(Transform parent, float x, float y, float size)
+        {
+            var go = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var img = go.GetComponent<Image>();
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            Place(img.rectTransform, x, y, size, size);
+            return img;
         }
 
         // ================================================================== per frame
@@ -261,8 +383,13 @@ namespace ValheimHeraldryMod.UI
             }
             if (panel == null || !panel.activeSelf) return;
 
-            if (banner == null) { Hide(); return; } // banner destroyed while editing
-            if (ZInput.GetKeyDown(KeyCode.Escape, false)) { Hide(); return; }
+            if (target == null || !target.IsAlive) { Hide(); return; } // destroyed while editing
+            if (ZInput.GetKeyDown(KeyCode.Escape, false))
+            {
+                if (choiceList.activeSelf) choiceList.SetActive(false); // Escape closes the list first
+                else Hide();
+                return;
+            }
             if ((ZInput.GetKeyDown(KeyCode.Return, false) || ZInput.GetKeyDown(KeyCode.KeypadEnter, false)) && !saveName.isFocused)
             {
                 Apply();
@@ -463,7 +590,8 @@ namespace ValheimHeraldryMod.UI
             IconArt.EnsureFor(b);
             int w = previewW, h = previewH;
             var mask = previewMask;
-            previewJob = Task.Run(() => FieldRenderer.Render(b, w, h, mask));
+            var arrangement = target?.Arrangement ?? FieldRenderer.Arrangement.Spread;
+            previewJob = Task.Run(() => FieldRenderer.Render(b, w, h, mask, arrangement));
         }
 
         private void FinishPreview()
@@ -472,6 +600,7 @@ namespace ValheimHeraldryMod.UI
             previewJob = null;
             if (job.IsFaulted || previewTexture == null) return;
             var src = job.Result;
+            if (src.Length != previewW * previewH) { renderAt = 0f; return; } // the shape changed while it rendered
             var dst = new Color32[previewW * previewH];
             for (int y = 0; y < previewH; y++)
             {
@@ -553,20 +682,21 @@ namespace ValheimHeraldryMod.UI
 
         // ================================================================== small helpers
 
-        private Text Label(string text, float x, float y, float w, float h, int size, Color colour)
+        private Text Label(string text, float x, float y, float w, float h, int size, Color colour, Transform parent = null)
         {
             var gui = GUIManager.Instance;
-            var go = gui.CreateText(text, panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero,
+            var go = gui.CreateText(text, parent ?? panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero,
                 gui.AveriaSerifBold, size, colour, true, Color.black, w, h, false);
             Place(go.GetComponent<RectTransform>(), x, y, w, h);
             return go.GetComponent<Text>();
         }
 
-        private void AddButton(string text, float x, float y, float w, float h, UnityEngine.Events.UnityAction onClick)
+        private Text AddButton(string text, float x, float y, float w, float h, UnityEngine.Events.UnityAction onClick, Transform parent = null)
         {
-            var go = GUIManager.Instance.CreateButton(text, panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero, w, h);
+            var go = GUIManager.Instance.CreateButton(text, parent ?? panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero, w, h);
             Place(go.GetComponent<RectTransform>(), x, y, w, h);
             go.GetComponent<Button>().onClick.AddListener(onClick);
+            return go.GetComponentInChildren<Text>();
         }
 
         /// <summary>Top-left placement inside the panel: x right, y down.</summary>

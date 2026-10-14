@@ -65,6 +65,9 @@
 
   <ItemGroup>
     <!-- Plain twill-weave cloth normal map (from BannerShare). Read by Rendering/ClothNormal.cs. -->
+    <EmbeddedResource Include="Art\HeraldTable.hmesh">
+      <LogicalName>ValheimHeraldryMod.HeraldTable.hmesh</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Art\Banner Bump Map.png">
       <LogicalName>ValheimHeraldryMod.ClothNormal.png</LogicalName>
     </EmbeddedResource>

@@ -9,6 +9,14 @@ namespace ValheimHeraldryMod
         private static ConfigEntry<int> maxBannerResolution;
         private static ConfigEntry<int> bannerResolution;
         private static ConfigEntry<string> excludeGameIcons;
+        private static ConfigEntry<int> maxPackMB, maxServedMB, maxDownloadMB;
+        private static ConfigEntry<bool> receiveServerPacks;
+
+        /// <summary>Accept charge packs from servers at all (each pack still needs heraldry_trust).</summary>
+        public static bool ReceiveServerPacks => receiveServerPacks?.Value ?? false;
+        public static long MaxPackBytes => (long)(maxPackMB?.Value ?? 8) << 20;
+        public static long MaxServedBytes => (long)(maxServedMB?.Value ?? 32) << 20;
+        public static long MaxDownloadBytes => (long)(maxDownloadMB?.Value ?? 64) << 20;
 
         public static void Bind(ConfigFile config)
         {
@@ -25,6 +33,23 @@ namespace ValheimHeraldryMod
                     "or 'all'. Excluded charges show as the placeholder roundel. Synced from the server; only admins can change it.",
                     null,
                     new ConfigurationManagerAttributes { IsAdminOnly = true }));
+
+            maxPackMB = config.Bind("Server", "MaxChargePackMB", 8,
+                new ConfigDescription("Largest charge pack (zipped) this server sends to players, in MB. Bigger packs are left out and logged.",
+                    new AcceptableValueRange<int>(1, 64),
+                    new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            maxServedMB = config.Bind("Server", "MaxChargePacksTotalMB", 32,
+                new ConfigDescription("Most charge-pack data (zipped, all packs together) this server sends to each player, in MB.",
+                    new AcceptableValueRange<int>(1, 256),
+                    new ConfigurationManagerAttributes { IsAdminOnly = true }));
+
+            receiveServerPacks = config.Bind("Client", "ReceiveServerPacks", false,
+                "Accept charge packs (custom charge art) from the servers you join. Off by default. Even when on, each pack " +
+                "has to be allowed once with the console command 'heraldry_trust <pack>' (or 'heraldry_trust all'), and again " +
+                "whenever the server changes it.");
+            maxDownloadMB = config.Bind("Client", "MaxChargePackDownloadMB", 64,
+                new ConfigDescription("Most charge-pack data this computer accepts from one server, in MB, whatever the server says.",
+                    new AcceptableValueRange<int>(1, 512)));
 
             bannerResolution = config.Bind("Client", "BannerResolution", 0,
                 new ConfigDescription(

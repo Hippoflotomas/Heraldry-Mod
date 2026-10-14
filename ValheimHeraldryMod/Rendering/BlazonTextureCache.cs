@@ -23,6 +23,8 @@ namespace ValheimHeraldryMod.Rendering
             public int[] Triangles;
             /// <summary>Fraction of the height, from the top, that can't be seen (behind the beam).</summary>
             public float HiddenTop;
+            /// <summary>How plain charges use the surface: banners Spread, shields Compact.</summary>
+            public FieldRenderer.Arrangement Arrangement = FieldRenderer.Arrangement.Spread;
         }
 
         private sealed class Entry
@@ -44,8 +46,13 @@ namespace ValheimHeraldryMod.Rendering
 
         public static int Count => Entries.Count;
 
+        /// <summary>
+        ///     Blazons with pack charges ("[wolf]") also key on the pack generation, so they redraw when packs arrive,
+        ///     change or go away; everything else is unaffected.
+        /// </summary>
         public static string KeyFor(string shapeId, string normalisedText, int width, int height) =>
-            $"{shapeId}|{width}x{height}|{normalisedText}";
+            $"{shapeId}|{width}x{height}|{normalisedText}" +
+            (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
 
         public static Texture2D Acquire(string normalisedText, int width, int height, Shape shape, out string key)
         {
@@ -74,10 +81,11 @@ namespace ValheimHeraldryMod.Rendering
                     float[] uv = shape?.UV;
                     int[] tris = shape?.Triangles;
                     float hidden = shape?.HiddenTop ?? 0f;
+                    var arrangement = shape?.Arrangement ?? FieldRenderer.Arrangement.Spread;
                     entry.Job = Task.Run(() =>
                     {
                         var mask = OutlineMask.FromTriangles(uv, tris, width, height, hidden);
-                        return FieldRenderer.Render(blazon, width, height, mask);
+                        return FieldRenderer.Render(blazon, width, height, mask, arrangement);
                     });
                     Pending.Add(entry);
                 }

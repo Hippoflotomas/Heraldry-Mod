@@ -135,6 +135,10 @@ namespace ValheimHeraldryMod.Heraldry
         private float BodyHeight()
         {
             if (outline == null) return h;
+            // A round or already-narrowing shape (a round shield) has no straight body to lay out on: use it all
+            int third = 0;
+            for (int x = 0; x < w; x++) if (outline[(h / 3) * w + x]) third++;
+            if (third < w * 0.98f) return h;
             for (int y = h / 3; y < h; y++)
             {
                 int covered = 0;

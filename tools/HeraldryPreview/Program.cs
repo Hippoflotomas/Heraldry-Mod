@@ -30,6 +30,17 @@ static class Program
                 OutlineMask.FillTopNotches(mask, w, h);
                 OutlineMask.HideTop(mask, w, h, 0.065f); // roughly what the vanilla banner's beam hides
             }
+            if (args.Length > 5 && args[5] == "round")
+            {
+                // A round shield face (the herald's table display)
+                mask = new bool[w * h];
+                for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float dx = (x + 0.5f) / w - 0.5f, dy = (y + 0.5f) / h - 0.5f;
+                    mask[y * w + x] = dx * dx + dy * dy < 0.25f;
+                }
+            }
             // optional 7th argument: compact | spread | reflow (how field charges use the tall banner)
             var arrangement = args.Length > 6
                 ? (FieldRenderer.Arrangement)Enum.Parse(typeof(FieldRenderer.Arrangement), args[6], true)
