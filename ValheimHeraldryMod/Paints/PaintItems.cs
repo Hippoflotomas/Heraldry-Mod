@@ -105,8 +105,8 @@ namespace ValheimHeraldryMod.Paints
             shared.m_name = "$" + prefabName;
             shared.m_description = "$" + prefabName + "_description";
             shared.m_itemType = ItemDrop.ItemData.ItemType.Material;
-            shared.m_maxStackSize = 50;
-            shared.m_weight = 0.3f;
+            shared.m_maxStackSize = 100;
+            shared.m_weight = 0.1f;
             shared.m_teleportable = true;
             shared.m_value = 0;
 

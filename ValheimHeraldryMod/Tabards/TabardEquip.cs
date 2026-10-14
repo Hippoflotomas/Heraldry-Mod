@@ -220,14 +220,15 @@ namespace ValheimHeraldryMod.Tabards
             var state = States.GetOrCreateValue(vis);
 
             string wanted = nview.GetZDO().GetString(HeraldicTabardWearer.ZdoKey, "");
-            if (wanted != state.Current)
+            string key = wanted.IndexOf('[') >= 0 ? wanted + "|" + ChargeLibrary.Generation : wanted; // picture charges arriving: redraw
+            if (key != state.Current)
             {
                 if (state.Instance != null) UnityEngine.Object.Destroy(state.Instance);
                 state.Instance = null;
                 TabardTextures.Release(state.Entry);
                 state.Entry = null;
                 state.Failed = false;
-                state.Current = wanted;
+                state.Current = key;
                 if (wanted.Length > 0)
                 {
                     string blazon = wanted.Length > 2 ? wanted.Substring(2) : "";

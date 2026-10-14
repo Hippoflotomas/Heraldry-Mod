@@ -10,12 +10,28 @@ namespace ValheimHeraldryMod
         private static ConfigEntry<int> maxBannerResolution;
         private static ConfigEntry<int> bannerResolution;
         private static ConfigEntry<string> excludeGameIcons;
-        private static ConfigEntry<int> maxPackMB, maxServedMB, maxDownloadMB;
-        private static ConfigEntry<bool> receiveServerPacks;
+        // Charges between players (2026-10-14 rework)
+        private static ConfigEntry<string> chargeRoot, serverChargeFolder;
+        private static ConfigEntry<bool> autoGetServerCharges, shareCharges, ownChargesFirst;
+        private static ConfigEntry<int> maxChargeKB, maxDownloadMB, maxUploadMB, serverMaxChargeKB, serverMaxUploadMB, relayCacheMB;
         private static ConfigEntry<int> maxBlazonLength, maxBlazonElements;
         private static ConfigEntry<string> excludeShields;
-        private static ConfigEntry<bool> basicModeDefault;
         private static ConfigEntry<string> lastEditorMode;
+        private static ConfigEntry<KeyCode> editModifier, editKey;
+        private static ConfigEntry<bool> allowSecretBlazons, showMottos;
+        private static ConfigEntry<int> maxInscriptionLength;
+
+        /// <summary>The secret codes work on this server.</summary>
+        public static bool AllowSecretBlazons => allowSecretBlazons?.Value ?? true;
+        /// <summary>Players see the words on scrolls and ordinaries (admins always do).</summary>
+        public static bool ShowMottos => showMottos?.Value ?? true;
+        public static int MaxInscriptionLength => maxInscriptionLength?.Value ?? 40;
+
+        /// <summary>The key (with <see cref="EditModifier"/>) that edits arms on a tagged piece that already uses E.</summary>
+        public static KeyCode EditKey => editKey?.Value ?? KeyCode.E;
+        public static KeyCode EditModifier => editModifier?.Value ?? KeyCode.LeftShift;
+        /// <summary>The default Shift+E: the game's own alternative use, handled through its interact.</summary>
+        public static bool EditKeyIsAltUse => EditKey == KeyCode.E && EditModifier == KeyCode.LeftShift;
         private static ConfigEntry<bool> paintCosts, paintCostsOnBanners;
         private static ConfigEntry<int> paintPerTincture, maxPaintPerPainting, paintRecipeAmount;
         private static readonly Dictionary<Heraldry.Paint, ConfigEntry<string>> paintItems = new Dictionary<Heraldry.Paint, ConfigEntry<string>>();
@@ -63,10 +79,21 @@ namespace ValheimHeraldryMod
         }
 
         /// <summary>Accept charge packs from servers at all (each pack still needs heraldry_trust).</summary>
-        public static bool ReceiveServerPacks => receiveServerPacks?.Value ?? false;
-        public static long MaxPackBytes => (long)(maxPackMB?.Value ?? 8) << 20;
-        public static long MaxServedBytes => (long)(maxServedMB?.Value ?? 32) << 20;
+        /// <summary>Folder for your charges, downloads and block list; empty = Documents\ValheimHeraldryMod.</summary>
+        public static string ChargeRoot => chargeRoot?.Value ?? "";
+        /// <summary>The charges this computer serves when it's the server; empty = ...\ServerCharges.</summary>
+        public static string ServerChargeFolder => serverChargeFolder?.Value ?? "";
+        public static bool AutoGetServerCharges => autoGetServerCharges?.Value ?? false;
+        public static bool ShareCharges => shareCharges?.Value ?? true;
+        public static bool OwnChargesFirst => ownChargesFirst?.Value ?? false;
+        /// <summary>Largest charge this computer accepts (client).</summary>
+        public static long MaxChargeBytes => (long)(maxChargeKB?.Value ?? 1024) << 10;
         public static long MaxDownloadBytes => (long)(maxDownloadMB?.Value ?? 64) << 20;
+        public static long MaxUploadBytes => (long)(maxUploadMB?.Value ?? 32) << 20;
+        /// <summary>Largest charge the server passes on.</summary>
+        public static long ServerMaxChargeBytes => (long)(serverMaxChargeKB?.Value ?? 1024) << 10;
+        public static long ServerMaxUploadBytes => (long)(serverMaxUploadMB?.Value ?? 16) << 20;
+        public static long RelayCacheBytes => (long)(relayCacheMB?.Value ?? 32) << 20;
 
         public static void Bind(ConfigFile config)
         {
@@ -84,14 +111,19 @@ namespace ValheimHeraldryMod
                     null,
                     new ConfigurationManagerAttributes { IsAdminOnly = true }));
 
-            maxPackMB = config.Bind("Server", "MaxChargePackMB", 8,
-                new ConfigDescription("Largest charge pack (zipped) this server sends to players, in MB. Bigger packs are left out and logged.",
-                    new AcceptableValueRange<int>(1, 64),
-                    new ConfigurationManagerAttributes { IsAdminOnly = true }));
-            maxServedMB = config.Bind("Server", "MaxChargePacksTotalMB", 32,
-                new ConfigDescription("Most charge-pack data (zipped, all packs together) this server sends to each player, in MB.",
-                    new AcceptableValueRange<int>(1, 256),
-                    new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            serverMaxChargeKB = config.Bind("Server", "MaxChargeKB", 1024,
+                new ConfigDescription("Largest charge picture (KB) this server passes between players.",
+                    new AcceptableValueRange<int>(16, 8192), new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            serverMaxUploadMB = config.Bind("Server", "MaxChargeUploadMBPerPlayer", 16,
+                new ConfigDescription("Most charge-picture data (MB) the server takes from one player per session when passing charges on.",
+                    new AcceptableValueRange<int>(1, 1024), new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            relayCacheMB = config.Bind("Server", "RelayCacheMB", 32,
+                new ConfigDescription("Memory (MB) the server uses to remember charges it passed on, so it doesn't fetch them twice. " +
+                                      "Kept until the server restarts, never written to disk.",
+                    new AcceptableValueRange<int>(0, 1024), new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            serverChargeFolder = config.Bind("Server", "ServerChargeFolder", "",
+                "Folder of charges this computer offers to everyone when it's the server (hosting or dedicated). " +
+                "Empty = Documents\\ValheimHeraldryMod\\ServerCharges. Pack folders, .zip packs or loose PNGs.");
 
             maxBlazonLength = config.Bind("Server", "MaxBlazonLength", 500,
                 new ConfigDescription("Longest blazon players may write, in characters. Longer ones are refused by the editor " +
@@ -142,18 +174,42 @@ namespace ValheimHeraldryMod
             }
             paintRecipeAmount.SettingChanged += (_, __) => PaintSettingsChanged?.Invoke();
 
+            allowSecretBlazons = config.Bind("Server", "AllowSecretBlazons", true,
+                new ConfigDescription("A few secret words stand for special designs. Off = they're just text that isn't blazon.",
+                    null, new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            showMottos = config.Bind("Server", "ShowMottos", true,
+                new ConfigDescription("Show the words written on scrolls and ordinaries (inscribed \"...\"). Off = players see them blank; " +
+                                      "admins still see what was written.", null, new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            maxInscriptionLength = config.Bind("Server", "MaxInscriptionLength", 40,
+                new ConfigDescription("Longest inscription (motto), in characters.", new AcceptableValueRange<int>(1, 200),
+                    new ConfigurationManagerAttributes { IsAdminOnly = true }));
+
+            editModifier = config.Bind("Client", "TaggedPieceEditModifier", KeyCode.LeftShift,
+                "Hold this (None = nothing) and press TaggedPieceEditKey to edit the arms on another mod's piece that already " +
+                "uses E for something else (a chest, a door). Default Shift+E; change it if that mod uses Shift+E too.");
+            editKey = config.Bind("Client", "TaggedPieceEditKey", KeyCode.E,
+                "See TaggedPieceEditModifier. Pieces with nothing else to do are edited with E as usual.");
+
             lastEditorMode = config.Bind("Client", "EditorMode", "basic",
                 new ConfigDescription("Which tab the blazon window opens on: 'basic' (dropdowns) or 'advanced' (write the blazon). " +
                                       "Remembers the last one you used.",
                     new AcceptableValueList<string>("basic", "advanced")));
 
-            receiveServerPacks = config.Bind("Client", "ReceiveServerPacks", false,
-                "Accept charge packs (custom charge art) from the servers you join. Off by default. Even when on, each pack " +
-                "has to be allowed once with the console command 'heraldry_trust <pack>' (or 'heraldry_trust all'), and again " +
-                "whenever the server changes it.");
-            maxDownloadMB = config.Bind("Client", "MaxChargePackDownloadMB", 64,
-                new ConfigDescription("Most charge-pack data this computer accepts from one server, in MB, whatever the server says.",
-                    new AcceptableValueRange<int>(1, 512)));
+            chargeRoot = config.Bind("Client", "ChargeFolder", "",
+                "Where your charges (Charges), downloaded charges (Downloaded) and block list live. " +
+                "Empty = Documents\\ValheimHeraldryMod.");
+            autoGetServerCharges = config.Bind("Client", "AutoGetServerCharges", false,
+                "Fetch the server's own charges without asking. Other players' charges always wait for 'heraldry_get'.");
+            shareCharges = config.Bind("Client", "ShareCharges", true,
+                "Send your charge pictures (your own and downloaded ones) when other players on the server need them for arms they see.");
+            ownChargesFirst = config.Bind("Client", "OwnChargesFirst", false,
+                "When you and the server both have a charge of the same name, use yours when you write it. Off = the server's.");
+            maxChargeKB = config.Bind("Client", "MaxChargeKB", 1024,
+                new ConfigDescription("Largest charge picture (KB) this computer accepts.", new AcceptableValueRange<int>(16, 8192)));
+            maxDownloadMB = config.Bind("Client", "MaxChargeDownloadMB", 64,
+                new ConfigDescription("Most charge-picture data (MB) this computer downloads per session.", new AcceptableValueRange<int>(1, 1024)));
+            maxUploadMB = config.Bind("Client", "MaxChargeUploadMB", 32,
+                new ConfigDescription("Most charge-picture data (MB) this computer sends to others per session.", new AcceptableValueRange<int>(0, 1024)));
 
             bannerResolution = config.Bind("Client", "BannerResolution", 0,
                 new ConfigDescription(

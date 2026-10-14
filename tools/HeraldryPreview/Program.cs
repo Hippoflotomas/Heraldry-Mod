@@ -10,6 +10,14 @@ static class Program
         string mode = args.Length > 0 ? args[0] : "parse";
         LoadIcons();
         LoadPacks();
+        // HERALDRY_LOGOS=folder of PNGs: game logos as the secret codes use them ("irongate.png" → [logo:irongate])
+        string logos = Environment.GetEnvironmentVariable("HERALDRY_LOGOS");
+        if (!string.IsNullOrEmpty(logos) && Directory.Exists(logos))
+            foreach (var f in Directory.GetFiles(logos, "*.png"))
+            {
+                var lp = MiniPng.Decode(File.ReadAllBytes(f), 4096, out int lw, out int lh);
+                ChargeArtLibrary.Register("logo:" + Path.GetFileNameWithoutExtension(f).ToLowerInvariant(), lp, lw, lh, false);
+            }
         if (mode == "basic")
         {
             // basic: every basic-mode combination (sampled) must parse with no Wrong words and within the default limits
@@ -75,7 +83,17 @@ static class Program
                 if (string.IsNullOrWhiteSpace(line) || line.StartsWith("//")) continue;
                 var b = BlazonParser.Parse(line);
                 var t0 = sw.ElapsedMilliseconds;
-                var px = FieldRenderer.Render(b, w, h, mask, arrangement);
+                // HERALDRY_CENTRE="u,v": a centre point off the middle (fractions of width and height)
+                float cu = -1, cv = -1;
+                var centreEnv = Environment.GetEnvironmentVariable("HERALDRY_CENTRE");
+                if (!string.IsNullOrEmpty(centreEnv))
+                {
+                    var parts = centreEnv.Split(',');
+                    cu = float.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture);
+                    cv = float.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture);
+                }
+                LoadText(b);
+                var px = FieldRenderer.Render(b, w, h, mask, arrangement, cu, cv);
                 Console.WriteLine($"{i:D2} {sw.ElapsedMilliseconds - t0,4} ms  {line}");
                 Png.Save(Path.Combine(args[2], $"{i:D2}.png"), px, w, h);
                 i++;
@@ -98,7 +116,7 @@ static class Program
                 if (string.IsNullOrWhiteSpace(line) || line.StartsWith("//")) continue;
                 var b = BlazonParser.Parse(line);
                 Console.WriteLine($"> {line}");
-                Console.WriteLine($"  valid={b.IsValid} field={Describe(b.Field)} ords=[{string.Join("; ", b.Ordinaries.Select(o => $"{o.Count}x{o.Kind}{(o.Diminutive?"(dim)":"")} {o.Line} {o.Tincture}{Style(o.Style)}"))}] charges=[{string.Join("; ", b.Charges.Select(Charge))}]");
+                Console.WriteLine($"  valid={b.IsValid} field={Describe(b.Field)} ords=[{string.Join("; ", b.Ordinaries.Select(o => $"{o.Count}x{o.Kind}{(o.Diminutive?"(dim)":"")} {o.Line} {o.Tincture}{Style(o.Style)}{(o.Inscription!=null?" ins="+o.Inscription.Display:"")}"))}] charges=[{string.Join("; ", b.Charges.Select(Charge))}]");
                 foreach (var o in b.Ordinaries)
                     if (o.Charges.Count > 0) Console.WriteLine($"  on {o.Kind}: {string.Join("; ", o.Charges.Select(Charge))}");
                 foreach (var w in b.Words.Where(w => w.Status != WordStatus.Correct || w.Message != null))
@@ -109,7 +127,7 @@ static class Program
     }
 
     static string Charge(Charge c) =>
-        $"{c.Count}x{c.Noun}{(c.Drawable ? "" : "(art)")} {string.Join(" ", c.Attitudes)} {c.Tincture} {c.Placement}" +
+        $"{c.Count}x{c.Noun}{(c.Drawable ? "" : "(art)")} {string.Join(" ", c.Attitudes)} {c.Tincture} {c.Placement} #{c.Hash}{(c.Quarters!=null?" q"+string.Join("",c.Quarters):"")}{(c.Inscription!=null?" ins="+c.Inscription.Display+"/"+c.Inscription.Tincture:"")}" +
         $"{(c.Host != null ? "(" + c.Host.Kind + ")" : "")}{(c.Rows != null ? " rows " + string.Join("-", c.Rows) : "")}" +
         $"{(c.Points != 5 ? " pts" + c.Points : "")}{(c.Pierced ? " pierced" : "")}{Style(c.Style)}";
 
@@ -147,25 +165,27 @@ static class Program
     /// </summary>
     static void LoadPacks()
     {
+        // The mod's own code end to end: pack files -> single charges (PackReader, MiniPng) -> fingerprints ->
+        // name index (ChargeIndex) -> decoded pictures registered under "charge:<fingerprint>"
         string root = Environment.GetEnvironmentVariable("HERALDRY_PACKS");
         if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
         var packs = new TestPacks();
         foreach (var dir in Directory.GetDirectories(root))
         {
-            var m = PackManifest.Parse(File.ReadAllText(Path.Combine(dir, "manifest.json"))); // the mod's own reader
-            string pack = (m.pack ?? Path.GetFileName(dir)).ToLowerInvariant().Replace(' ', '-');
-            foreach (var ch in m.charges)
+            var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories)
+                .ToDictionary(f => Path.GetRelativePath(dir, f).Replace('\\', '/'), File.ReadAllBytes, StringComparer.OrdinalIgnoreCase);
+            foreach (var b in PackReader.Read(files, Path.GetFileName(dir), w => Console.Error.WriteLine("warn: " + w)))
             {
-                if (ch == null || ch.image == null || ch.names.Length == 0) continue;
-                var (px, w, h) = ReadRgba(FindCaseless(dir, ch.image + ".rgba"));
-                Rgba[] mask = ch.mask != null ? ReadRgba(FindCaseless(dir, ch.mask + ".rgba")).px : null;
-                string key = $"pack:{pack}:{packs.Count}";
-                ChargeArtLibrary.Register(key, px, w, h, !ch.noLines, mask);
-                foreach (var n in ch.names) packs.Add(n, pack, key, ch.attitudes);
+                var px = MiniPng.Decode(b.Image, 1024, out int w, out int h);
+                var mask = b.Mask != null ? MiniPng.Decode(b.Mask, 1024, out _, out _) : null;
+                ChargeArtLibrary.Register(ChargeBundle.ArtKey(b.Fingerprint), px, w, h, !b.NoLines, mask);
+                packs.Index.Add(b.Fingerprint, b.Pack, b.Names, b.Attitudes, ChargeSource.Own, b.Bytes.Length);
+                packs.Here.Add(b.Fingerprint);
+                Console.Error.WriteLine($"charge [{b.Name}] {b.Fingerprint} ({b.Bytes.Length >> 10} KB) from {b.Pack}");
             }
         }
         Lexicon.Packs = packs;
-        Console.Error.WriteLine($"{packs.Count} pack drawings from {root}");
+        Console.Error.WriteLine($"{packs.Index.Count} pack charges from {root}");
     }
 
     /// <summary>Windows file names ignore case; this harness runs on Linux, so match the way Windows would.</summary>
@@ -182,22 +202,38 @@ static class Program
         return (px, w, h);
     }
 
-    /// <summary>Minimal stand-in for the mod's ChargePacks (first pack wins, best attitude match).</summary>
+    /// <summary>The mod's ChargeLibrary without the game: the same index, everything already here.</summary>
     sealed class TestPacks : IPackCharges
     {
-        readonly System.Collections.Generic.List<(string name, string pack, string key, string[] atts)> all = new();
-        public int Count;
-        public void Add(string name, string pack, string key, string[] atts) { all.Add((name.ToLowerInvariant(), pack, key, atts)); Count++; }
-        public string Resolve(string name, System.Collections.Generic.IList<string> attitudes, out string unmatched)
+        public readonly ChargeIndex Index = new ChargeIndex();
+        public readonly System.Collections.Generic.HashSet<string> Here = new();
+        public string Resolve(string name, System.Collections.Generic.IList<string> attitudes, out string unmatched) =>
+            Index.Resolve(name, attitudes, out unmatched);
+        public bool Has(string fingerprint) => Here.Contains(fingerprint);
+        public string Suggest(string name) => Index.Suggest(name);
+    }
+
+    /// <summary>
+    ///     HERALDRY_TEXT=folder: inscriptions' lettering, made outside (the game uses its own font). Each text is a
+    ///     file named by the hex of its UTF-8 bytes (.mask: int width, int height, then one byte per pixel); texts
+    ///     without one are listed in missing.txt for text_masks.py to make.
+    /// </summary>
+    static void LoadText(Blazon b)
+    {
+        string dir = Environment.GetEnvironmentVariable("HERALDRY_TEXT");
+        if (string.IsNullOrEmpty(dir)) return;
+        var all = b.Ordinaries.Select(o => o.Inscription).Concat(b.Charges.Select(c => c.Inscription))
+            .Concat(b.Ordinaries.SelectMany(o => o.Charges).Select(c => c.Inscription)).Where(i => i != null);
+        foreach (var ins in all)
         {
-            unmatched = null;
-            var c = all.Where(d => d.name == name || d.pack + ":" + d.name == name).ToList();
-            if (c.Count == 0) return null;
-            var best = c.OrderByDescending(d => attitudes.Count(a => d.atts.Contains(a))).First();
-            unmatched = attitudes.FirstOrDefault(a => !best.atts.Contains(a) && a != "contourne" && a != "inverted" && a != "reversed");
-            return best.key;
+            string text = ins.Display;
+            if (TextArtLibrary.Has(text)) continue;
+            string file = Path.Combine(dir, Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(text)) + ".mask");
+            if (!File.Exists(file)) { File.AppendAllText(Path.Combine(dir, "missing.txt"), text + "\n"); continue; }
+            var bytes = File.ReadAllBytes(file);
+            int w = BitConverter.ToInt32(bytes, 0), h = BitConverter.ToInt32(bytes, 4);
+            TextArtLibrary.Register(text, bytes.Skip(8).ToArray(), w, h);
         }
-        public string Suggest(string name) => null;
     }
 
     static float Frac(float v) => v - (float)Math.Floor(v);

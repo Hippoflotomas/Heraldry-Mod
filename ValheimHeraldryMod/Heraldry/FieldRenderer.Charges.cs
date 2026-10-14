@@ -105,6 +105,7 @@ namespace ValheimHeraldryMod.Heraldry
                 if (p.Art == null)
                 {
                     c = Tinct(p.C.Tincture, fieldRegion, x, y);
+                    if (p.C.Noun == "scroll") c = ScrollDetail(p, c, u, v, fieldRegion, x, y);
                     continue;
                 }
                 bool proper = p.C.Tincture == null || p.C.Tincture.Kind == TinctureKind.Proper;
@@ -212,6 +213,13 @@ namespace ValheimHeraldryMod.Heraldry
             foreach (var c in blazon.Charges)
             {
                 if (!Renderable(c)) continue;
+                float aspect = WideAspect(c);
+                if (aspect > 0)
+                {
+                    // Scrolls and wide pictures (a logo) lie across the field on their own
+                    Wide(c, aspect, ref top, ref bottom);
+                    continue;
+                }
                 if (c.Placement == Placement.Between && c.Host != null) pending.Add(new Pending(Between(c.Host, c), c));
                 else if (c.Placement == Placement.None) plain.Add(c);
                 else
@@ -227,12 +235,65 @@ namespace ValheimHeraldryMod.Heraldry
             FitTogether(pending);
         }
 
+        /// <summary>Width over height of a charge laid out as a band (a scroll, a wide picture); 0 for everything else.</summary>
+        private static float WideAspect(Charge c)
+        {
+            if (c.Noun == "scroll") return ChargeShapes.ScrollAspect;
+            if (c.ArtKey == null) return 0f;
+            var art = ChargeArtLibrary.Get(c.ArtKey);
+            return art != null && art.Aspect >= 1.8f ? art.Aspect : 0f;
+        }
+
+        /// <summary>
+        ///     A band across the field: in base (a scroll's default), in chief, or across the middle (a wide picture's
+        ///     default). As wide as the field allows there (86%), as tall as its proportions give; plain charges then
+        ///     keep clear of a band in chief or base.
+        /// </summary>
+        private void Wide(Charge c, float aspect, ref float top, ref float bottom)
+        {
+            float ftop = top, fbottom = bottom;
+            FreeBox(ref ftop, ref fbottom, out float left, out float right);
+            var place = c.Placement;
+            if (place == Placement.None && c.Noun == "scroll") place = Placement.Base;
+            float margin = 0.03f * unit;
+            float width = (right - left) * 0.86f;
+            float height = width / aspect;
+            float maxHeight = (fbottom - ftop) * (place == Placement.Base || place == Placement.Chief ? 0.3f : 0.6f);
+            if (height > maxHeight) { height = maxHeight; width = height * aspect; }
+            float y = place == Placement.Base ? fbottom - height * 0.5f - margin
+                    : place == Placement.Chief ? ftop + height * 0.5f + margin
+                    : Math.Max(ftop + height * 0.5f, Math.Min(fbottom - height * 0.5f, cyp));
+            // Narrower where the outline narrows (a pointed base): as wide as the field is at that height
+            float rowLeft = left, rowRight = right;
+            for (float x = left; x < right; x += gs) if (Grid(dOver, x, y) > margin) { rowLeft = x; break; }
+            for (float x = right; x > left; x -= gs) if (Grid(dOver, x, y) > margin) { rowRight = x; break; }
+            float fit = (rowRight - rowLeft) * 0.86f;
+            if (fit < width) { width = Math.Max(fit, 4f); height = width / aspect; }
+            float cx = place == Placement.None || place == Placement.FessPoint ? cxp : (rowLeft + rowRight) * 0.5f;
+            if (place == Placement.Base) bottom = Math.Min(bottom, y - height * 0.5f);
+            else if (place == Placement.Chief) top = Math.Max(top, y + height * 0.5f);
+            var g = Group.Make(width * 0.5f);
+            g.Put(cx, y);
+            Emit(g, c, width * 0.5f, fieldCharges); // its size is set here, not by the free space at its centre
+        }
+
         /// <summary>Charges with no placement share the free field, each group in its share of the rows.</summary>
         private void LayoutPlain(List<Charge> plain, float top, float bottom, List<Pending> pending)
         {
             // Free box: where the field isn't covered (below a chief, inside a bordure), within the body
             FreeBox(ref top, ref bottom, out float left, out float right);
             if (arrangement == Arrangement.Chest) bottom = Math.Min(bottom, Math.Max(top + 0.2f * fh, ChestDepth * fh));
+            // A centre point off the middle (serpent scale, a modder's shield): centre the box on it
+            if (Math.Abs(cxp - w * 0.5f) > 1f && cxp > left && cxp < right)
+            {
+                float half = Math.Min(cxp - left, right - cxp);
+                left = cxp - half; right = cxp + half;
+            }
+            if (Math.Abs(cyp - fh * 0.5f) > 1f && cyp > top && cyp < bottom)
+            {
+                float half = Math.Min(cyp - top, bottom - cyp);
+                top = cyp - half; bottom = cyp + half;
+            }
             int totalRows = 0;
             var rowsOf = new List<int[]>();
             foreach (var c in plain)
@@ -426,7 +487,7 @@ namespace ValheimHeraldryMod.Heraldry
         private Group Explicit(Charge c)
         {
             int n = c.Count;
-            float cx = w * 0.5f, cy = fh * 0.5f;
+            float cx = cxp, cy = cyp; // the centre point
             switch (c.Placement)
             {
                 case Placement.Pale:
@@ -460,6 +521,8 @@ namespace ValheimHeraldryMod.Heraldry
                 case Placement.DexterBase: case Placement.MiddleBase: case Placement.SinisterBase:
                 case Placement.HonourPoint: case Placement.FessPoint: case Placement.NombrilPoint:
                     return AtPoint(c.Placement, n);
+                case Placement.Quarters:
+                    return InQuarters(c);
             }
             return RowsInBox(DefaultRows(n), 0, 0, w, fh, true);
         }
@@ -488,10 +551,33 @@ namespace ValheimHeraldryMod.Heraldry
                 case Placement.HonourPoint: rowsOffset = -0.5f; break;
                 case Placement.NombrilPoint: rowsOffset = 0.5f; break;
             }
-            float x0 = left + col * cw, y0 = top + (row + rowsOffset) * rh;
+            // The middle column and row sit on the centre point (the middle of the field unless a shape moves it)
+            float x0 = left + col * cw, y0 = top + row * rh;
+            if (Math.Abs(cxp - w * 0.5f) > 1f && col == 1) x0 = Math.Max(left, Math.Min(right - cw, cxp - cw * 0.5f));
+            if (Math.Abs(cyp - fh * 0.5f) > 1f && row == 1) y0 = Math.Max(top, Math.Min(bottom - rh, cyp - rh * 0.5f));
+            y0 += rowsOffset * rh;
             var rows = n <= 3 ? new[] { n } : DefaultRows(n);
             var g = RowsInBox(rows, x0, y0, x0 + cw, y0 + rh, false);
             if (n == 1) g.R = MaxCharge * w * 0.5f; // alone it may fill the field; FitTogether shrinks it for neighbours
+            return g;
+        }
+
+        /// <summary>"in the first and fourth quarters": the charge (its count) in each quarter, around the centre point.</summary>
+        private Group InQuarters(Charge c)
+        {
+            float top = 0, bottom = fh;
+            FreeBox(ref top, ref bottom, out float left, out float right);
+            float cx = Math.Max(left + 1, Math.Min(right - 1, cxp)), cy = Math.Max(top + 1, Math.Min(bottom - 1, cyp));
+            var g = Group.Make(float.MaxValue);
+            foreach (int q in c.Quarters ?? new int[0])
+            {
+                float x0 = q == 1 || q == 3 ? left : cx, x1 = q == 1 || q == 3 ? cx : right;
+                float y0 = q <= 2 ? top : cy, y1 = q <= 2 ? cy : bottom;
+                var sub = RowsInBox(c.Count <= 3 ? new[] { c.Count } : DefaultRows(c.Count), x0, y0, x1, y1, false);
+                for (int i = 0; i < sub.Count; i++) g.Put(sub.Xs[i], sub.Ys[i]);
+                g.R = Math.Min(g.R, sub.R);
+            }
+            if (g.Count == 0) g.R = 0;
             return g;
         }
 
@@ -509,7 +595,7 @@ namespace ValheimHeraldryMod.Heraldry
             int n = c.Count;
             var inside = InsideField(o);
             float hw = (o.Diminutive ? DiminutiveWidth : BandWidth) * unit * 0.5f;
-            float cx = w * 0.5f, cy = fh * 0.5f;
+            float cx = cxp, cy = cyp; // the centre point
             Group g;
             switch (o.Kind)
             {
@@ -604,7 +690,7 @@ namespace ValheimHeraldryMod.Heraldry
                 {
                     // Round the quarters: 1st (dexter chief), 2nd, 3rd, 4th
                     var counts = Share(n, 4);
-                    float cx = w * 0.5f, cy = fh * 0.5f;
+                    float cx = cxp, cy = cyp; // the centre point
                     float[][] boxes =
                     {
                         new[] { 0f, 0f, cx - hw, cy - hw }, new[] { cx + hw, 0f, (float)w, cy - hw },

@@ -33,7 +33,24 @@ namespace ValheimHeraldryMod.Heraldry
         private Placement pendingPlacement;
         private const string NeedsArt = "this charge needs art; shown as a placeholder roundel for now";
 
-        public static Blazon Parse(string text) => new BlazonParser(text ?? "").Run();
+        public static Blazon Parse(string text)
+        {
+            text = text ?? "";
+            // A secret code: the whole text stands for a fixed design (SecretCodes); one word, with a playful note
+            string visible = BlazonText.Visible(text);
+            if (Lexicon.SecretsAllowed() && SecretCodes.TryExpand(visible, out string expansion, out string note))
+            {
+                var b = new BlazonParser(expansion, trusted: true).Run();
+                int start = visible.Length - visible.TrimStart().Length;
+                b.Text = visible;
+                b.Words.Clear();
+                b.Messages.Clear();
+                b.Words.Add(new WordNote { Start = start, Length = visible.Trim().Length, Word = visible.Trim(), Status = WordStatus.Correct, Message = note });
+                b.IsSecret = true;
+                return b;
+            }
+            return new BlazonParser(text).Run();
+        }
 
         /// <summary>The first thing worth telling the player ("'100': between two and sixteen pieces"), or null.</summary>
         public static string FirstProblem(Blazon b)
@@ -49,11 +66,21 @@ namespace ValheimHeraldryMod.Heraldry
             return null;
         }
 
-        private BlazonParser(string text)
+        /// <summary>A secret code's own expansion: may use the logos and its inscriptions are always shown.</summary>
+        private readonly bool trusted;
+
+        private BlazonParser(string text, bool trusted = false)
         {
+            this.trusted = trusted;
+            // A stored blazon may end in a hidden tail of picture fingerprints (BlazonText); words are in the visible part
+            tail = BlazonText.Hashes(text);
+            text = BlazonText.Visible(text);
             result.Text = text;
             Tokenize(text);
         }
+
+        private readonly string[] tail;
+        private int packCount; // bracketed charges seen so far: each one's place in the tail
 
         // ------------------------------------------------------------------ tokens
 
@@ -169,6 +196,7 @@ namespace ValheimHeraldryMod.Heraldry
         {
             if (toks.Count > 0)
             {
+                ParseTattered();
                 result.Field = ParseField();
                 while (!AtEnd)
                     ParseObject();
@@ -184,6 +212,23 @@ namespace ValheimHeraldryMod.Heraldry
                 if ((int)t.Note.Status == -1)
                     Mark(t, WordStatus.Wrong, "not understood here");
             return result;
+        }
+
+        /// <summary>"[slightly | badly] tattered," before the field: not blazon, this mod's own words (Hippo, 2026-10-14).</summary>
+        private void ParseTattered()
+        {
+            const string Note = "Heraldry Mod's own word, not blazon: torn cloth on banners and tabards, worn paint on shields";
+            if ((Cur == "slightly" || Cur == "badly") && Peek(1) == "tattered")
+            {
+                result.Tattered = Cur == "slightly" ? 1 : 3;
+                Take(WordStatus.Correct, Note);
+                Take(WordStatus.Correct, Note);
+            }
+            else if (Cur == "tattered")
+            {
+                result.Tattered = 2;
+                Take(WordStatus.Correct, Note);
+            }
         }
 
         // ------------------------------------------------------------------ field
@@ -426,6 +471,33 @@ namespace ValheimHeraldryMod.Heraldry
                 return;
             }
 
+            if (w == "in" && IsQuartersStart())
+            {
+                // "in the first and fourth quarters a mullet": the charge in each quarter named
+                bool forNext = Take().AfterComma;
+                if (Cur == "the") Take();
+                var quarters = new List<int>();
+                while (!AtEnd)
+                {
+                    if (Lexicon.Ordinals.TryGetValue(Cur, out int q) && q >= 1 && q <= 4) { quarters.Add(q); Take(); continue; }
+                    if (Cur == "and" || Cur == "the") { Take(); continue; }
+                    break;
+                }
+                if (Cur == "quarter" || Cur == "quarters") Take();
+                if (quarters.Count == 0) return;
+                if (lastCharge != null && lastCharge.Placement == Placement.None && !(forNext && !AtEnd))
+                {
+                    lastCharge.Placement = Placement.Quarters;
+                    lastCharge.Quarters = quarters.ToArray();
+                }
+                else
+                {
+                    pendingPlacement = Placement.Quarters;
+                    pendingQuarters = quarters.ToArray();
+                }
+                return;
+            }
+
             if (w == "in" && Peek(1) != null && (IsPlacementWord(Peek(1)) || IsPointStart(Peek(1), Peek(2))))
             {
                 // "a mullet in dexter chief" places the mullet; ", in dexter chief a mullet" places what follows
@@ -468,6 +540,19 @@ namespace ValheimHeraldryMod.Heraldry
             }
 
             ParseOrdinaryOrCharge();
+        }
+
+        private int[] pendingQuarters;
+
+        /// <summary>"in the first [and fourth] quarter[s]".</summary>
+        private bool IsQuartersStart()
+        {
+            int k = 1;
+            if (Peek(k) == "the") k++;
+            if (Peek(k) == null || !Lexicon.Ordinals.TryGetValue(Peek(k), out int q) || q < 1 || q > 4) return false;
+            for (int j = k + 1; j < k + 8 && Peek(j) != null; j++)
+                if (Peek(j) == "quarter" || Peek(j) == "quarters") return true;
+            return false;
         }
 
         /// <summary>"in [the] dexter chief", "in sinister", "in fess point", "in honour point"...</summary>
@@ -681,6 +766,7 @@ namespace ValheimHeraldryMod.Heraldry
             var tok = CurTok;
             string name = tok.Text.Substring(1, tok.Text.Length - 2);
             pos++;
+            int index = packCount++;
             if (tok.Note.Status == WordStatus.Wrong) return null; // unclosed bracket, already explained
             if (name.Length == 0)
             {
@@ -693,19 +779,38 @@ namespace ValheimHeraldryMod.Heraldry
                 count = 20;
             }
             Mark(tok, WordStatus.Correct);
-            var c = new Charge { Count = count, Noun = name, PackName = name, Drawable = true };
+            if (trusted && name.StartsWith("logo:"))
+            {
+                // A game logo (secret codes only): drawn from the player's own game files
+                var logo = new Charge { Count = count, Noun = name, ArtKey = name, Drawable = true };
+                attitudeToks.Clear();
+                return FinishCharge(logo, null);
+            }
+            var c = new Charge { Count = count, Noun = name, PackName = name, Drawable = true, PackIndex = index };
             attitudeToks.Clear();
             FinishCharge(c, null);
 
             var packs = Lexicon.Packs;
             string unmatched = null;
-            c.ArtKey = packs?.Resolve(name, c.Attitudes, out unmatched);
+            // The exact picture named in the hidden tail (whoever painted it), else whatever has this name here
+            string hash = index < tail.Length && tail[index].Length > 0 ? tail[index] : null;
+            if (hash != null)
+            {
+                foreach (var at in attitudeToks)
+                    if (!Lexicon.IsFlip(at.Text)) Mark(at, WordStatus.Correct);
+            }
+            else hash = packs?.Resolve(name, c.Attitudes, out unmatched);
+            c.Hash = hash;
+            c.ArtKey = hash != null ? ChargeBundle.ArtKey(hash) : null;
+            if (hash != null && packs != null && !packs.Has(hash))
+                Mark(tok, WordStatus.NotDrawnYet, $"you haven't got this [{name}] picture yet: 'heraldry_pending' in the console (F5) lists what's waiting");
+            if (hash != null && index < tail.Length && tail[index].Length > 0) return c;
             if (c.ArtKey == null)
             {
                 string s = packs?.Suggest(name);
                 Mark(tok, WordStatus.Wrong, s != null
-                    ? $"no charge [{name}] in your charge packs: did you mean [{s}]?"
-                    : $"no charge [{name}] in your charge packs; shown as a placeholder roundel");
+                    ? $"no charge [{name}] among your charges or the server's: did you mean [{s}]?"
+                    : $"no charge [{name}] among your charges or the server's; shown as a placeholder roundel");
                 return c;
             }
             foreach (var at in attitudeToks)
@@ -831,6 +936,7 @@ namespace ValheimHeraldryMod.Heraldry
             {
                 o.Tincture = earlyTincture;
                 ParseStyle(o.Style, beforeTincture: false);
+                OrdinaryInscription(o);
                 result.Ordinaries.Add(o);
                 return o;
             }
@@ -848,8 +954,51 @@ namespace ValheimHeraldryMod.Heraldry
             }
             o.Tincture = t;
             ParseStyle(o.Style, beforeTincture: false);
+            OrdinaryInscription(o);
             result.Ordinaries.Add(o);
             return o;
+        }
+
+        /// <summary>Words along an ordinary: a fess, chief, cross, pale or bend (one of them, not bars or pallets).</summary>
+        private void OrdinaryInscription(Ordinary o)
+        {
+            if (Cur != "inscribed") return;
+            var it = CurTok;
+            var ins = ParseInscription();
+            if (ins == null) return;
+            bool ok = o.Count == 1 && (o.Kind == OrdinaryKind.Fess || o.Kind == OrdinaryKind.Chief || o.Kind == OrdinaryKind.Cross ||
+                                       o.Kind == OrdinaryKind.Pale || o.Kind == OrdinaryKind.Bend || o.Kind == OrdinaryKind.BendSinister);
+            if (ok) o.Inscription = ins;
+            else Mark(it, WordStatus.Unsupported, "words go on a scroll, or along a fess, chief, cross, pale or bend");
+        }
+
+        /// <summary>inscribed "FOR ODIN" [in runes] [tincture]. Null if something's missing (marked).</summary>
+        private Inscription ParseInscription()
+        {
+            var it = Take();
+            if (AtEnd || !IsQuoted(Cur))
+            {
+                Mark(it, WordStatus.Wrong, "inscribed with what? Put the words in quotes: inscribed \"FOR ODIN\"");
+                return null;
+            }
+            var qt = Take();
+            string raw = qt.Note.Word;
+            string text = raw.Trim().Trim('"', '\u201C', '\u201D').Trim();
+            if (text.Length == 0) { Mark(qt, WordStatus.Wrong, "no words between the quotes"); return null; }
+            int max = Lexicon.MaxInscription();
+            if (text.Length > max && !trusted)
+            {
+                Mark(qt, WordStatus.Wrong, $"at most {max} characters on this server ({text.Length} here)");
+                text = text.Substring(0, max);
+            }
+            var ins = new Inscription { Text = text, FromCode = trusted };
+            if (Cur == "in" && Peek(1) == "runes")
+            {
+                Take(); Take();
+                ins.Runes = true;
+            }
+            if (TryTincture(out var t, allowProper: false, allowCounterchanged: false)) ins.Tincture = t;
+            return ins;
         }
 
         /// <summary>
@@ -929,6 +1078,7 @@ namespace ValheimHeraldryMod.Heraldry
             if (pendingPlacement != Placement.None)
             {
                 c.Placement = pendingPlacement;
+                if (pendingPlacement == Placement.Quarters) c.Quarters = pendingQuarters;
                 pendingPlacement = Placement.None;
             }
 
@@ -1040,6 +1190,16 @@ namespace ValheimHeraldryMod.Heraldry
                 pending.Clear();
             }
 
+            if (Cur == "inscribed")
+            {
+                var it = CurTok;
+                c.Inscription = ParseInscription();
+                if (c.Inscription != null && c.Noun != "scroll")
+                {
+                    Mark(it, WordStatus.Unsupported, "only scrolls (and some ordinaries) carry words so far");
+                    c.Inscription = null;
+                }
+            }
             result.Charges.Add(c);
             lastCharge = c;
             return c;

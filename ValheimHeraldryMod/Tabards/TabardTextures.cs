@@ -33,7 +33,7 @@ namespace ValheimHeraldryMod.Tabards
         public static Entry Acquire(string normalisedText)
         {
             normalisedText = BlazonLimits.Drawable(normalisedText);
-            string key = normalisedText + (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
+            string key = normalisedText + (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargeLibrary.Generation : "");
             if (!Entries.TryGetValue(key, out var entry))
             {
                 entry = new Entry { Key = key };
@@ -116,7 +116,7 @@ namespace ValheimHeraldryMod.Tabards
                     int tx = x0 + x;
                     if (tx < 0 || tx >= Size) continue;
                     var c = art[r * pw + x];
-                    dst[ty * Size + tx] = new Color32(c.R, c.G, c.B, 255);
+                    dst[ty * Size + tx] = new Color32(c.R, c.G, c.B, c.A); // tattered: see-through gaps
                 }
             }
         }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace ValheimHeraldryMod.Heraldry
 {
@@ -16,14 +17,17 @@ namespace ValheimHeraldryMod.Heraldry
         string Suggest(string name);
     }
 
-    /// <summary>Charges from charge packs, by the names in their manifests.</summary>
+    /// <summary>Picture charges (from charge packs, the server, other players), by the names in their manifests.</summary>
     public interface IPackCharges
     {
         /// <summary>
-        ///     Art key for this name ("wolf", or "pack:wolf"), choosing the drawing that best matches the attitudes.
-        ///     Null if no pack has the name. <paramref name="unmatched"/> = an attitude no drawing of it has.
+        ///     Fingerprint of the charge with this name ("wolf", or "pack:wolf"), choosing the drawing that best
+        ///     matches the attitudes. Null if no charge has the name. <paramref name="unmatched"/> = an attitude no
+        ///     drawing of it has.
         /// </summary>
         string Resolve(string name, IList<string> attitudes, out string unmatched);
+        /// <summary>True if this charge's picture is here (so it can be drawn).</summary>
+        bool Has(string fingerprint);
         /// <summary>The closest charge name, for "did you mean", or null.</summary>
         string Suggest(string name);
     }
@@ -52,7 +56,13 @@ namespace ValheimHeraldryMod.Heraldry
             { "tenne", new Rgba(178, 98, 34) },
             { "sanguine", new Rgba(118, 26, 26) },
             { "murrey", new Rgba(128, 34, 74) },
+            { "magenta", new Rgba(255, 0, 255) }, // the placeholder roundel's colour (secret codes)
         };
+
+        /// <summary>Longest inscription (motto) in characters; the server's setting.</summary>
+        public static Func<int> MaxInscription = () => 40;
+        /// <summary>Whether the secret codes work here (the server's AllowSecretBlazons).</summary>
+        public static Func<bool> SecretsAllowed = () => true;
 
         public static readonly Dictionary<string, PartitionKind> PartitionWords = new Dictionary<string, PartitionKind>
         {
@@ -175,6 +185,7 @@ namespace ValheimHeraldryMod.Heraldry
             "mullet", "roundel", "annulet", "lozenge", "mascle", "rustre", "fusil", "billet", "crescent",
             "saltorel", "saltire", "cross", "cross couped", "cross crosslet", "cross pattee", "cross potent",
             "bezant", "plate", "torteau", "hurt", "pellet", "pomme", "ogress", "golpe",
+            "scroll",
         };
 
         /// <summary>
@@ -301,6 +312,7 @@ namespace ValheimHeraldryMod.Heraldry
             T("tawny", "tenne", TinctureKind.Stain);
             T("sanguine", "sanguine", TinctureKind.Stain);
             T("murrey", "murrey", TinctureKind.Stain);
+            T("magenta", "magenta", TinctureKind.Colour);
 
             T("ermine", "ermine", TinctureKind.Fur);
             T("ermines", "ermines", TinctureKind.Fur);
@@ -334,7 +346,9 @@ namespace ValheimHeraldryMod.Heraldry
 
             C("mullet", "mullets"); C("estoile", "estoiles"); C("roundel", "roundels"); C("annulet", "annulets");
             C("lozenge", "lozenges"); C("mascle", "mascles"); C("rustre", "rustres"); C("fusil", "fusils");
-            C("billet", "billets"); C("crescent", "crescents"); C("fleur-de-lis", "fleurs-de-lis");
+            C("billet", "billets"); C("scroll", "scrolls");
+            Charges["escroll"] = new ChargeEntry { Singular = "scroll" };
+            Charges["escrolls"] = new ChargeEntry { Singular = "scroll", Plural = true }; C("crescent", "crescents"); C("fleur-de-lis", "fleurs-de-lis");
             C("martlet", "martlets"); C("escallop", "escallops"); C("lion", "lions"); C("eagle", "eagles");
             C("wolf", "wolves"); C("boar", "boars"); C("stag", "stags"); C("hart", "harts"); C("raven", "ravens");
             C("dragon", "dragons"); C("wyvern", "wyverns"); C("tree", "trees"); C("longship", "longships");

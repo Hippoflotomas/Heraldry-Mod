@@ -17,6 +17,9 @@ namespace ValheimHeraldryMod.UI
         float HiddenTop { get; }
         /// <summary>How plain charges use the surface (banners Spread, shields Compact).</summary>
         Heraldry.FieldRenderer.Arrangement Arrangement { get; }
+        /// <summary>The field's centre as fractions from the top left; -1 = the middle.</summary>
+        float CentreU { get; }
+        float CentreV { get; }
 
         /// <summary>Things to choose between (shields in the inventory); null = nothing to choose.</summary>
         IList<string> Choices { get; }
@@ -50,6 +53,8 @@ namespace ValheimHeraldryMod.UI
         public int[] OutlineTriangles => banner.m_outlineTriangles;
         public float HiddenTop => banner.m_hiddenTop;
         public Heraldry.FieldRenderer.Arrangement Arrangement => Heraldry.FieldRenderer.Arrangement.Spread;
+        public float CentreU => -1f;
+        public float CentreV => -1f;
         public IList<string> Choices => null;
         public IList<UnityEngine.Sprite> ChoiceIcons => null;
         public int Chosen => -1;

@@ -64,7 +64,6 @@ namespace ValheimHeraldryMod.UI
         private Text blazonLabel, basicTabLabel, advancedTabLabel;
         private RectTransform fieldRect;
         private bool basicMode;
-        private bool basicTouched;   // a dropdown was changed since opening (until then the existing arms are kept)
         private bool syncingBasic;
         private BasicBlazon basic = new BasicBlazon();
         private readonly List<BasicBlazon.ChargeChoice> chargeChoices = new List<BasicBlazon.ChargeChoice>();
@@ -85,7 +84,6 @@ namespace ValheimHeraldryMod.UI
         private bool[] previewMask;
         private float renderAt = -1f;     // time to start the next preview render (debounce)
         private int unblockAfterFrame = -1; // release the game's input a frame after closing
-        private bool rerenderWanted;
 
         private Entry pendingDelete;
         private float pendingDeleteUntil;
@@ -277,9 +275,8 @@ namespace ValheimHeraldryMod.UI
             choiceRow.SetActive(target.Choices != null);
             choiceList.SetActive(false);
             ShowChoice();
-            input.text = target.GetText();
+            Load(target.GetText());
             basic = new BasicBlazon();
-            basicTouched = false;
             FillChargeList();
             SyncBasic();
             SetMode(HeraldryConfig.LastEditorMode != "advanced", false);
@@ -337,7 +334,7 @@ namespace ValheimHeraldryMod.UI
                 status.text = target.Blocked;
                 return;
             }
-            string limit = BlazonLimits.Problem(input.text.Trim());
+            string limit = BlazonLimits.Problem(input.text.Trim(), parsed);
             if (limit != null)
             {
                 status.text = $"<color=#f04a40>Not applied: {limit}.</color>";
@@ -350,7 +347,7 @@ namespace ValheimHeraldryMod.UI
                 return;
             }
             PayCost();
-            string message = target.Apply(input.text.Trim());
+            string message = target.Apply(StoredText());
             Hide();
             if (message != null) MessageHud.instance?.ShowMessage(MessageHud.MessageType.Center, message);
         }
@@ -360,7 +357,7 @@ namespace ValheimHeraldryMod.UI
             choiceList.SetActive(false);
             var choices = target?.Choices;
             if (choices == null || index < 0 || index >= choices.Count) return;
-            input.text = target.Choose(index);
+            Load(target.Choose(index));
             SetupShape();
             ShowChoice();
             renderAt = 0f;
@@ -502,7 +499,6 @@ namespace ValheimHeraldryMod.UI
             {
                 if (syncingBasic) return;
                 bool taken = set(i);
-                basicTouched = true;
                 if (taken)
                 {
                     basic.Tidy();
@@ -518,7 +514,7 @@ namespace ValheimHeraldryMod.UI
         {
             chargeChoices.Clear();
             chargeChoices.AddRange(BasicBlazon.BuiltInCharges);
-            var packs = ChargePacks.Instance.Names();
+            var packs = ChargeLibrary.Instance.Names();
             if (packs.Count > 0)
             {
                 chargeChoices.Add(BasicBlazon.PackDivider);
@@ -657,7 +653,7 @@ namespace ValheimHeraldryMod.UI
         private void OnTextChanged()
         {
             string text = input.text ?? "";
-            parsed = BlazonParser.Parse(text);
+            parsed = BlazonParser.Parse(StoredText()); // with the fingerprints, so others' charges count as known
             LayoutMarks(text);
             ShowProblems();
             RefreshCost();
@@ -811,7 +807,7 @@ namespace ValheimHeraldryMod.UI
             if (limit != null) { sb.Append($"<color=#f04a40>{char.ToUpper(limit[0])}{limit.Substring(1)}.</color>\n"); lines++; }
             foreach (var w in parsed.Words)
             {
-                if (w.Status == WordStatus.NotDrawnYet) { later = true; continue; }
+                if (w.Status == WordStatus.NotDrawnYet && w.Message == null) { later = true; continue; }
                 if (w.Message == null || w.Status == WordStatus.Correct) continue;
                 if (lines++ >= 5) { sb.Append("<color=#bbbbbb>…</color>\n"); break; }
                 sb.Append(Colourise(w)).Append('\n');
@@ -833,6 +829,40 @@ namespace ValheimHeraldryMod.UI
 
         // ================================================================== preview
 
+        // ================================================================== the hidden fingerprints
+
+        /// <summary>Which picture each [name] meant in the arms loaded into the box (BlazonText's hidden tail).</summary>
+        private readonly Dictionary<string, string> knownCharges = new Dictionary<string, string>();
+
+        /// <summary>Puts stored arms in the box: the visible text, remembering their pictures' fingerprints.</summary>
+        private void Load(string stored)
+        {
+            knownCharges.Clear();
+            var b = BlazonParser.Parse(stored ?? "");
+            foreach (var c in b.Charges.Concat(b.Ordinaries.SelectMany(o => o.Charges)))
+                if (c.Hash != null && c.PackName != null && !knownCharges.ContainsKey(c.PackName))
+                    knownCharges[c.PackName] = c.Hash;
+            input.text = BlazonText.Visible(stored ?? "");
+        }
+
+        /// <summary>
+        ///     The text to store: what's in the box plus the fingerprint of each [charge] — the one the loaded arms
+        ///     had under that name (so editing someone's arms keeps their picture), else the one this name finds here.
+        /// </summary>
+        private string StoredText()
+        {
+            string visible = (input.text ?? "").Trim();
+            if (visible.IndexOf('[') < 0) return visible;
+            var b = BlazonParser.Parse(visible);
+            var charges = b.Charges.Concat(b.Ordinaries.SelectMany(o => o.Charges)).Where(c => c.PackIndex >= 0).ToList();
+            if (charges.Count == 0) return visible;
+            var hashes = new string[charges.Max(c => c.PackIndex) + 1];
+            for (int i = 0; i < hashes.Length; i++) hashes[i] = "";
+            foreach (var c in charges)
+                hashes[c.PackIndex] = (c.PackName != null && knownCharges.TryGetValue(c.PackName, out var h) ? h : c.Hash) ?? "";
+            return BlazonText.Join(visible, hashes);
+        }
+
         private void StartPreview()
         {
             renderAt = -1f;
@@ -841,7 +871,8 @@ namespace ValheimHeraldryMod.UI
             int w = previewW, h = previewH;
             var mask = previewMask;
             var arrangement = target?.Arrangement ?? FieldRenderer.Arrangement.Spread;
-            previewJob = Task.Run(() => FieldRenderer.Render(b, w, h, mask, arrangement));
+            float cu = target?.CentreU ?? -1f, cv = target?.CentreV ?? -1f;
+            previewJob = Task.Run(() => FieldRenderer.Render(b, w, h, mask, arrangement, cu, cv));
         }
 
         private void FinishPreview()
@@ -859,7 +890,7 @@ namespace ValheimHeraldryMod.UI
                 {
                     var c = src[s + x];
                     bool cloth = previewMask == null || previewMask[s + x];
-                    dst[d + x] = new Color32(c.R, c.G, c.B, cloth ? (byte)255 : (byte)0);
+                    dst[d + x] = new Color32(c.R, c.G, c.B, cloth ? c.A : (byte)0);
                 }
             }
             previewTexture.SetPixels32(dst);
@@ -870,10 +901,10 @@ namespace ValheimHeraldryMod.UI
 
         private void SaveCurrent()
         {
-            string blazon = (input.text ?? "").Trim();
+            string blazon = StoredText();
             if (blazon.Length == 0) { status.text = "Nothing to save."; return; }
             string name = (saveName.text ?? "").Trim();
-            if (name.Length == 0) name = SavedBlazons.SuggestName(blazon);
+            if (name.Length == 0) name = SavedBlazons.SuggestName(BlazonText.Visible(blazon));
             bool replaced = SavedBlazons.Put(name, blazon);
             status.text = replaced ? $"Updated '{name}'." : $"Saved '{name}'.";
             saveName.text = "";
@@ -895,7 +926,7 @@ namespace ValheimHeraldryMod.UI
                 hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = true;
 
                 var s = saved;
-                var load = gui.CreateButton($"{saved.name}   <color=#a0a0a0>{Shorten(saved.blazon, 60)}</color>", row.transform,
+                var load = gui.CreateButton($"{saved.name}   <color=#a0a0a0>{Shorten(BlazonText.Visible(saved.blazon), 60)}</color>", row.transform,
                     Vector2.zero, Vector2.zero, Vector2.zero);
                 load.GetComponentInChildren<Text>().supportRichText = true;
                 load.GetComponentInChildren<Text>().alignment = TextAnchor.MiddleLeft;
@@ -904,7 +935,7 @@ namespace ValheimHeraldryMod.UI
                 load.GetComponent<Button>().onClick.AddListener(() =>
                 {
                     if (basicMode) SetMode(false, true); // saved arms go to the text box; basic can't show them
-                    input.text = s.blazon; // loads into the box; Apply still needed
+                    Load(s.blazon); // loads into the box; Apply still needed
                     status.text = $"Loaded '{s.name}'. Apply to paint it.";
                 });
 

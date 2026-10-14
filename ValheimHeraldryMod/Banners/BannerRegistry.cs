@@ -8,8 +8,8 @@ using UnityEngine;
 namespace ValheimHeraldryMod.Banners
 {
     /// <summary>
-    ///     Registers the heraldic banner pieces. Step 2 only does the vanilla hanging banner; StandardLarge
-    ///     (from this mod's own asset bundle) slots in here later as a second model.
+    ///     Registers the heraldic banner pieces. The vanilla hanging banner is a HeraldicBanner; the large standard
+    ///     (StandardLarge.cs) is painted through the tagged-piece path instead.
     ///     One piece per banner shape: what's painted on it is per instance, not per prefab.
     /// </summary>
     internal static class BannerRegistry
@@ -30,6 +30,7 @@ namespace ValheimHeraldryMod.Banners
 
             AddBanner("ValheimHeraldryMod_BannerHanging", VanillaHangingBanner, "Heraldic banner (hanging)",
                 "A plain cloth banner. Write a blazon on it and every viewer sees the arms painted.");
+            StandardLarge.Register();
         }
 
         private static void AddBanner(string prefabName, string source, string displayName, string description)

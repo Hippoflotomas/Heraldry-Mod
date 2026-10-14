@@ -58,6 +58,9 @@ namespace ValheimHeraldryMod.Rendering
         public static void EnsureFor(Blazon blazon)
         {
             if (blazon == null) return;
+            ChargeLibrary.Instance.EnsureFor(blazon); // picture charges: decode, or note what's missing
+            TextArt.EnsureFor(blazon);                // inscriptions' lettering (and whether mottos show)
+            LogoArt.EnsureFor(blazon);                // the secret codes' game logos
             foreach (var c in blazon.Charges) Ensure(c);
             foreach (var o in blazon.Ordinaries)
                 foreach (var c in o.Charges) Ensure(c);
@@ -66,7 +69,8 @@ namespace ValheimHeraldryMod.Rendering
         private static void Ensure(Charge c)
         {
             string key = c.ArtKey;
-            if (key == null || IsBlocked(key)) return;
+            if (key == null || key.StartsWith(ChargeBundle.ArtKeyPrefix, System.StringComparison.Ordinal) ||
+                key.StartsWith("logo:", System.StringComparison.Ordinal) || IsBlocked(key)) return;
             if (ChargeArtLibrary.Has(key) || Missing.Contains(key)) return;
 
             if (!FindItems()) return; // not in a world yet; try again on the next render

@@ -1,5 +1,6 @@
 ﻿using HarmonyLib;
 using UnityEngine;
+using ValheimHeraldryMod.Heraldry;
 
 namespace ValheimHeraldryMod.Shields
 {
@@ -15,9 +16,9 @@ namespace ValheimHeraldryMod.Shields
     [HarmonyPatch]
     internal static class ShieldPatches
     {
-        private const string ZdoLeft = "ValheimHeraldryMod_ShieldLeft";
-        private const string ZdoBack = "ValheimHeraldryMod_ShieldBack";
-        private const string ZdoItem = "ValheimHeraldryMod_Item";
+        internal const string ZdoLeft = "ValheimHeraldryMod_ShieldLeft";
+        internal const string ZdoBack = "ValheimHeraldryMod_ShieldBack";
+        internal const string ZdoItem = "ValheimHeraldryMod_Item";
 
         private static readonly AccessTools.FieldRef<Humanoid, ItemDrop.ItemData> LeftItem = AccessTools.FieldRefAccess<Humanoid, ItemDrop.ItemData>("m_leftItem");
         private static readonly AccessTools.FieldRef<Humanoid, ItemDrop.ItemData> HiddenLeftItem = AccessTools.FieldRefAccess<Humanoid, ItemDrop.ItemData>("m_hiddenLeftItem");
@@ -46,15 +47,22 @@ namespace ValheimHeraldryMod.Shields
         public static ShieldFace FaceForItem(ItemDrop.ItemData item)
         {
             var prefab = item?.m_dropPrefab;
-            return prefab == null ? null : ShieldFace.For(prefab.name, ShieldFace.FindModel(prefab));
+            if (prefab == null) return null;
+            var tagged = TaggedFace.For(prefab, out _); // another modder's tagged face wins
+            if (tagged != null) return ShieldFace.FromTagged(tagged, prefab.name);
+            return ShieldFace.For(prefab.name, ShieldFace.FindModel(prefab));
         }
 
         private static string PrefabName(int hash)
         {
             var prefab = ObjectDB.instance != null ? ObjectDB.instance.GetItemPrefab(hash) : null;
             var drop = prefab != null ? prefab.GetComponent<ItemDrop>() : null;
-            return drop != null && HeraldicShield.IsShield(drop.m_itemData) && !HeraldryConfig.IsShieldExcluded(prefab.name) ? prefab.name : null;
+            return drop != null && HeraldicShield.IsShield(drop.m_itemData) && Paintable(prefab) ? prefab.name : null;
         }
+
+        /// <summary>Not on the exclude list, or carrying a tagged face (its modder asked for it to be painted).</summary>
+        public static bool Paintable(GameObject prefab) =>
+            prefab != null && (!HeraldryConfig.IsShieldExcluded(prefab.name) || TaggedFace.HasTag(prefab));
 
         private static void SetIfChanged(ZDO zdo, string key, string value)
         {
@@ -122,7 +130,7 @@ namespace ValheimHeraldryMod.Shields
             var item = __instance.m_itemData;
             if (!HeraldicShield.IsShield(item)) return;
             string name = item.m_dropPrefab != null ? item.m_dropPrefab.name : Utils.GetPrefabName(__instance.gameObject);
-            if (HeraldryConfig.IsShieldExcluded(name)) return;
+            if (HeraldryConfig.IsShieldExcluded(name) && !TaggedFace.HasTag(item.m_dropPrefab)) return;
             HeraldicShield.Attach(__instance.gameObject, name, () => HeraldicShield.BlazonOf(__instance.m_itemData));
         }
 
@@ -165,7 +173,7 @@ namespace ValheimHeraldryMod.Shields
         private static void Tooltip(ItemDrop.ItemData item, ref string __result)
         {
             string text = HeraldicShield.BlazonOf(item);
-            if (text.Length > 0) __result += $"\n\n<color=orange>Arms:</color> {text}";
+            if (text.Length > 0) __result += $"\n\n<color=orange>Arms:</color> {Rendering.TextArt.ForDisplay(BlazonText.Visible(text))}";
         }
     }
 }

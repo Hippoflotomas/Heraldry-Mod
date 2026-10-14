@@ -25,6 +25,8 @@ namespace ValheimHeraldryMod.Rendering
             public float HiddenTop;
             /// <summary>How plain charges use the surface: banners Spread, shields Compact.</summary>
             public FieldRenderer.Arrangement Arrangement = FieldRenderer.Arrangement.Spread;
+            /// <summary>The field's centre as fractions from the top left; -1 = the middle.</summary>
+            public float CentreU = -1f, CentreV = -1f;
         }
 
         private sealed class Entry
@@ -38,7 +40,7 @@ namespace ValheimHeraldryMod.Rendering
         private static readonly Dictionary<string, Entry> Entries = new Dictionary<string, Entry>();
         private static readonly List<Entry> Pending = new List<Entry>();
         private static readonly Regex Spaces = new Regex(@"\s+");
-        private static readonly Color32 Linen = new Color32(214, 204, 178, 255);
+        internal static readonly Color32 Linen = new Color32(214, 204, 178, 255);
 
         /// <summary>Case and spacing don't change the arms, so they don't get their own texture.</summary>
         public static string Normalise(string text) =>
@@ -52,7 +54,7 @@ namespace ValheimHeraldryMod.Rendering
         /// </summary>
         public static string KeyFor(string shapeId, string normalisedText, int width, int height) =>
             $"{shapeId}|{width}x{height}|{normalisedText}" +
-            (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
+            (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargeLibrary.Generation : "");
 
         public static Texture2D Acquire(string normalisedText, int width, int height, Shape shape, out string key)
         {
@@ -83,10 +85,11 @@ namespace ValheimHeraldryMod.Rendering
                     int[] tris = shape?.Triangles;
                     float hidden = shape?.HiddenTop ?? 0f;
                     var arrangement = shape?.Arrangement ?? FieldRenderer.Arrangement.Spread;
+                    float cu = shape?.CentreU ?? -1f, cv = shape?.CentreV ?? -1f;
                     entry.Job = Task.Run(() =>
                     {
                         var mask = OutlineMask.FromTriangles(uv, tris, width, height, hidden);
-                        return FieldRenderer.Render(blazon, width, height, mask, arrangement);
+                        return FieldRenderer.Render(blazon, width, height, mask, arrangement, cu, cv);
                     });
                     Pending.Add(entry);
                 }
@@ -131,7 +134,7 @@ namespace ValheimHeraldryMod.Rendering
                     for (int x = 0; x < w; x++)
                     {
                         var c = src[s + x];
-                        dst[d + x] = new Color32(c.R, c.G, c.B, 255);
+                        dst[d + x] = new Color32(c.R, c.G, c.B, c.A); // gaps in tattered cloth are see-through
                     }
                 }
                 e.Texture.SetPixels32(dst);

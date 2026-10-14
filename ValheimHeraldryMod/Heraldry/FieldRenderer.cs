@@ -44,18 +44,25 @@ namespace ValheimHeraldryMod.Heraldry
         ///     banner) at the same size; null means the whole rectangle.
         ///     <paramref name="arrangement"/>: how charges without a placement use the surface (banners: Spread).
         /// </summary>
+        /// <param name="centreU">
+        ///     Where the field's centre (fess point) lies, as fractions of the width and height from the top left;
+        ///     negative = the middle of the field (2026-10-14: lopsided shapes such as the serpent scale, and the
+        ///     ValheimHeraldryMod_CentrePoint tag on modders' faces). Partition lines, ordinaries and charges at the
+        ///     fess point meet there.
+        /// </param>
         public static Rgba[] Render(Blazon blazon, int width, int height, bool[] outline = null,
-            Arrangement arrangement = Arrangement.Spread)
+            Arrangement arrangement = Arrangement.Spread, float centreU = -1f, float centreV = -1f)
         {
             // Rows hidden at the top (behind the beam, empty in the outline): lay the arms out on the visible part
             // only, so a chief or bordure starts where the cloth can be seen, then carry the top row up into them.
             int hidden = HiddenRows(outline, width, height);
             if (hidden == 0)
-                return new FieldRenderer(blazon, width, height, outline, arrangement).Run();
+                return new FieldRenderer(blazon, width, height, outline, arrangement, centreU, centreV).Run();
             int vh = height - hidden;
             var visibleOutline = new bool[width * vh];
             Array.Copy(outline, hidden * width, visibleOutline, 0, visibleOutline.Length);
-            var visible = new FieldRenderer(blazon, width, vh, visibleOutline, arrangement).Run();
+            float cv = centreV < 0 ? centreV : (centreV * height - hidden) / vh;
+            var visible = new FieldRenderer(blazon, width, vh, visibleOutline, arrangement, centreU, cv).Run();
             var px = new Rgba[width * height];
             for (int y = 0; y < hidden; y++) Array.Copy(visible, 0, px, y * width, width);
             Array.Copy(visible, 0, px, hidden * width, visible.Length);
@@ -75,7 +82,7 @@ namespace ValheimHeraldryMod.Heraldry
             return 0;
         }
 
-        private FieldRenderer(Blazon b, int width, int height, bool[] outline, Arrangement arrangement)
+        private FieldRenderer(Blazon b, int width, int height, bool[] outline, Arrangement arrangement, float centreU, float centreV)
         {
             this.arrangement = arrangement;
             blazon = b;
@@ -85,7 +92,21 @@ namespace ValheimHeraldryMod.Heraldry
             unit = Math.Min(width, height);
             fh = BodyHeight();
             diag = (float)Math.Sqrt((double)width * width + (double)fh * fh);
+            // The centre: given, or the middle of the body. Kept well inside the field so the warp stays sane.
+            cxp = centreU >= 0 ? Math.Max(0.15f, Math.Min(0.85f, centreU)) * w : w * 0.5f;
+            cyp = centreV >= 0 ? Math.Max(0.15f, Math.Min(0.85f, centreV)) * h : fh * 0.5f;
         }
+
+        /// <summary>The field's centre in pixels (the fess point).</summary>
+        private readonly float cxp, cyp;
+
+        /// <summary>
+        ///     From the real field to the standard one whose centre is the middle: piecewise linear on each side of
+        ///     the centre point, so lines drawn through the middle of the standard field pass through the centre
+        ///     point. Identity when the centre is the middle.
+        /// </summary>
+        private float WX(float x) => x < cxp ? x * (w * 0.5f) / cxp : w * 0.5f + (x - cxp) * (w * 0.5f) / Math.Max(1f, w - cxp);
+        private float WY(float y) => y < cyp ? y * (fh * 0.5f) / cyp : fh * 0.5f + (y - cyp) * (fh * 0.5f) / Math.Max(1f, fh - cyp);
 
         private Rgba[] Run()
         {
@@ -128,6 +149,7 @@ namespace ValheimHeraldryMod.Heraldry
                 int n = Samples * Samples;
                 result[y * w + x] = new Rgba((byte)(r / n), (byte)(g / n), (byte)(b / n));
             }
+            if (blazon.Tattered > 0) Tatter(result);
             return result;
         }
 
@@ -164,6 +186,7 @@ namespace ValheimHeraldryMod.Heraldry
                 c = o.Style.IsPlain
                     ? (InsideOrdinary(o, x, y, 0) ? Tinct(o.Tincture, region, x, y) : c)
                     : DrawOrdinary(o, c, region, x, y);
+                if (o.Inscription != null && InsideOrdinary(o, x, y, 0)) c = OrdinaryText(o, c, region, x, y);
                 if (onCharges.TryGetValue(o, out var on)) c = DrawCharges(on, c, region, x, y);
             }
             if (fieldCharges.Count > 0) c = DrawCharges(fieldCharges, c, region, x, y);
@@ -177,6 +200,8 @@ namespace ValheimHeraldryMod.Heraldry
         {
             if (f.Tinctures.Count < 2) return 0;
             var line = f.Line;
+            // Stripes and checks keep the real grid; partitions (and gyrons) meet at the centre point
+            if (f.Partition != PartitionKind.None || f.Variation == VariationKind.Gyronny) { x = WX(x); y = WY(y); }
 
             switch (f.Partition)
             {
@@ -267,6 +292,8 @@ namespace ValheimHeraldryMod.Heraldry
             float hw = hw0 + grow;
             int n = Math.Max(1, o.Count);
             var line = o.Line;
+            // Ordinaries through the middle go through the centre point; a chief and a bordure follow the edges
+            if (o.Kind != OrdinaryKind.Chief && o.Kind != OrdinaryKind.Bordure) { x = WX(x); y = WY(y); }
 
             switch (o.Kind)
             {

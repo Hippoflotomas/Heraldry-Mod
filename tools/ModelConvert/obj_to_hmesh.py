@@ -1,5 +1,5 @@
 """
-obj_to_hmesh.py <model.obj> <out.hmesh> [--center] [--only <object>[,<object>...]]
+obj_to_hmesh.py <model.obj> <out.hmesh> [--center] [--only <object>[,<object>...]] [--face-as-is]
 
 Turns a model into the small binary mesh the mod builds at runtime (no Unity asset bundles).
 Make the .obj with assimp, which bakes Blender's object transforms in:
@@ -7,6 +7,9 @@ Make the .obj with assimp, which bakes Blender's object transforms in:
 
 - --only keeps just the named objects (as assimp names them in the .obj, e.g. "Cylinder.001"), for a file
   that holds a whole scene (PaintBottle1.fbx also has the table in it).
+- --face-as-is keeps the ValheimHeraldryMod_Face faces as they are (submesh named after the material, not lifted,
+  UVs untouched): for models whose tagged face is found at runtime like another modder's (the StandardLarge
+  banner's cloth), instead of becoming the table-style "Display" part.
 - One submesh per material slot (Wood, Metal, ...); the mod puts a vanilla material on each by name.
 - Converts Blender/assimp space (right-handed, centimetres) to Unity's (left-handed, metres): x is negated,
   triangle winding flipped, everything scaled by 0.01.
@@ -108,7 +111,8 @@ if __name__ == '__main__':
         keep = set(sys.argv[sys.argv.index('--only') + 1].split(','))
         parts = {k: v for k, v in parts.items() if k[0] in keep}
         if not parts: sys.exit(f"none of {sorted(keep)} found")
-    subs = [face_display(sb) if sb[0] == FACE_MATERIAL else sb for sb in build_submeshes(V, VT, VN, parts)]
+    as_is = '--face-as-is' in sys.argv
+    subs = [face_display(sb) if sb[0] == FACE_MATERIAL and not as_is else sb for sb in build_submeshes(V, VT, VN, parts)]
     if '--center' in sys.argv:
         # Origin at the middle of the footprint, on the floor, so the piece rotates about its centre when placed
         allp = np.vstack([s[1] for s in subs]); c = (allp.min(0) + allp.max(0)) / 2; c[1] = allp.min(0)[1]

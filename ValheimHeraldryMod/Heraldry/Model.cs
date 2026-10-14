@@ -100,6 +100,7 @@ namespace ValheimHeraldryMod.Heraldry
         public LineKind Line;
         public Tincture Tincture;
         public Style Style = new Style();
+        public Inscription Inscription;
         /// <summary>Charges placed on this ordinary ("on a chief azure three mullets or").</summary>
         public List<Charge> Charges = new List<Charge>();
     }
@@ -118,6 +119,26 @@ namespace ValheimHeraldryMod.Heraldry
         // Points of the shield ("in dexter chief"): dexter is the bearer's right, the viewer's left
         DexterChief, MiddleChief, SinisterChief, DexterFlank, SinisterFlank, DexterBase, MiddleBase, SinisterBase,
         HonourPoint, FessPoint, NombrilPoint,
+        /// <summary>"in the first and fourth quarters": the charge (its count) in each quarter named.</summary>
+        Quarters,
+    }
+
+    /// <summary>Words on a scroll or along an ordinary: inscribed "FOR ODIN" [in runes] [tincture].</summary>
+    public sealed class Inscription
+    {
+        /// <summary>As written (case kept).</summary>
+        public string Text;
+        /// <summary>"in runes": Latin letters turned into Elder Futhark runes.</summary>
+        public bool Runes;
+        /// <summary>Null = sable on metals, argent on colours.</summary>
+        public Tincture Tincture;
+        /// <summary>Part of a secret code's design (always shown, whatever the server's motto setting).</summary>
+        public bool FromCode;
+        /// <summary>Set before drawing when the server hides mottos from this player: drawn without its words.</summary>
+        public bool Hidden;
+
+        /// <summary>The characters to draw: the text, or its runes.</summary>
+        public string Display => Runes ? RuneText.FromLatin(Text) : Text;
     }
 
     public sealed class Charge
@@ -145,6 +166,13 @@ namespace ValheimHeraldryMod.Heraldry
         public string ArtKey;
         /// <summary>A charge from a charge pack, by the name in its brackets ("wolf", "northern-beasts:wolf").</summary>
         public string PackName;
+        /// <summary>The exact picture of a bracketed charge (its fingerprint), from the blazon's hidden tail or found by name.</summary>
+        public string Hash;
+        /// <summary>Which bracketed charge this is, counting from 0 in the text (its place in the hidden tail).</summary>
+        public int PackIndex = -1;
+        /// <summary>For Placement.Quarters: which quarters (1 = dexter chief, 2 = sinister chief, 3, 4).</summary>
+        public int[] Quarters;
+        public Inscription Inscription;
         /// <summary>"armed gules": claws, horns, beak, hooves, antlers. Null = same as the charge.</summary>
         public Tincture Armed;
         /// <summary>"langued azure": the tongue. Null = same as the charge.</summary>
@@ -161,6 +189,13 @@ namespace ValheimHeraldryMod.Heraldry
         public List<WordNote> Words = new List<WordNote>();
         /// <summary>Problems that don't belong to one word ("per pale needs two tinctures").</summary>
         public List<string> Messages = new List<string>();
+        /// <summary>Drawn from a secret code (the text is the code, not blazon).</summary>
+        public bool IsSecret;
+        /// <summary>
+        ///     "slightly tattered" 1, "tattered" 2, "badly tattered" 3, else 0 (Hippo's idea, this mod's own words):
+        ///     cloth is torn (holes, ragged edges); paint on shields is worn off in patches.
+        /// </summary>
+        public int Tattered;
 
         /// <summary>
         ///     How much there is to draw, for the server's element limit: one for a partitioned or patterned field,

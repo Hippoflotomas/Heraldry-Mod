@@ -28,6 +28,8 @@ namespace ValheimHeraldryMod.Station
         private uint lastRevision = uint.MaxValue;
         private string cacheKey;
         private string currentText;
+        private string currentKey;
+        private int lastGeneration = -1;
 
         private void Start()
         {
@@ -71,11 +73,14 @@ namespace ValheimHeraldryMod.Station
             if (display == null) return;
             var zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null) return;
-            if (zdo.DataRevision == lastRevision && currentText != null) return;
+            if (zdo.DataRevision == lastRevision && currentText != null && lastGeneration == ChargeLibrary.Generation) return;
             lastRevision = zdo.DataRevision;
+            lastGeneration = ChargeLibrary.Generation;
 
             string text = BlazonTextureCache.Normalise(zdo.GetString(HeraldicBanner.BlazonZdoKey, ""));
-            if (text == currentText) return;
+            string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text; // picture charges arriving: redraw
+            if (key == currentKey) return;
+            currentKey = key;
             currentText = text;
             if (text.Length == 0)
             {
@@ -120,7 +125,7 @@ namespace ValheimHeraldryMod.Station
             this.player = player;
             // Equipped things first, then the rest in inventory order
             shields = player.GetInventory().GetAllItemsInGridOrder()
-                .Where(i => (i.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Shield && !HeraldryConfig.IsShieldExcluded(i.m_dropPrefab?.name))
+                .Where(i => (i.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Shield && Shields.ShieldPatches.Paintable(i.m_dropPrefab))
                             || Tabards.TabardItem.IsTabard(i))
                 .OrderByDescending(i => i.m_equipped)
                 .ToList();
@@ -141,6 +146,8 @@ namespace ValheimHeraldryMod.Station
         public float HiddenTop => 0f;
         public Heraldry.FieldRenderer.Arrangement Arrangement =>
             IsTabard ? Heraldry.FieldRenderer.Arrangement.Chest : Heraldry.FieldRenderer.Arrangement.Compact;
+        public float CentreU => Face?.CentreU ?? -1f;
+        public float CentreV => Face?.CentreV ?? -1f;
 
         public IList<string> Choices => shields.Select(Label).ToList();
         public IList<Sprite> ChoiceIcons => shields.Select(i => i.GetIcon()).ToList();

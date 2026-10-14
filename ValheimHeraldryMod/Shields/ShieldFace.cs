@@ -31,6 +31,10 @@ namespace ValheimHeraldryMod.Shields
         public float[] OutlineUV;      // the part of the face the arms are laid out on (for metal shields, the painted panel)
         public int[] OutlineTriangles;
         public float Aspect;
+        /// <summary>The field's centre (fess point) as fractions from the top left; -1 = the middle.</summary>
+        public float CentreU = -1f, CentreV = -1f;
+        /// <summary>Set when this is another modder's tagged face (painted on the face itself, not baked).</summary>
+        public TaggedFace Tagged;
         public string ShapeId;
         public string Key;
         public string Note;
@@ -53,6 +57,26 @@ namespace ValheimHeraldryMod.Shields
             { "ShieldIronTower",       new Settings(+1, true,  false, true)  },
             { "ShieldFlametal",        new Settings(+1, false, true,  true)  },
             { "ShieldFlametalTower",   new Settings(-1, false, true,  true)  },
+        };
+
+        /// <summary>Shields whose centre is their boss (the face's most raised point), not the middle (Hippo, 2026-10-14).</summary>
+        private static readonly HashSet<string> CentreOnBoss = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ShieldSerpentscale",
+        };
+
+        /// <summary>A tagged face described the way the table, preview and icons expect.</summary>
+        public static ShieldFace FromTagged(TaggedFace t, string prefabName) => new ShieldFace
+        {
+            Tagged = t,
+            OutlineUV = t.OutlineUV,
+            OutlineTriangles = t.OutlineTriangles,
+            Aspect = t.Aspect,
+            CentreU = t.CentreU,
+            CentreV = t.CentreV,
+            ShapeId = "Heraldry_Tagged_" + prefabName,
+            Key = t.Key,
+            Note = t.Note,
         };
 
         private const float FrontThreshold = 0.5f;
@@ -209,10 +233,27 @@ namespace ValheimHeraldryMod.Shields
             face.OutlineUV = outlineUV.ToArray();
             face.OutlineTriangles = outlineTris.ToArray();
             face.Aspect = rangeX / rangeY;
+            if (CentreOnBoss.Contains(prefabName))
+            {
+                // The front vertex standing furthest out towards the viewer
+                Vector3 best = Vector3.zero;
+                float bestZ = float.MinValue;
+                foreach (int t in layout)
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var v = snap.Vertices[tris[t + k]];
+                        float z = v.z * settings.FaceSign; // the face looks along FaceSign * Z: outward = that way
+                        if (z > bestZ) { bestZ = z; best = v; }
+                    }
+                var c = P(best);
+                face.CentreU = c.x;
+                face.CentreV = 1f - c.y; // the renderer counts from the top
+            }
             face.ShapeId = "Heraldry_Shield_" + prefabName;
             face.Note = $"{front.Count} of {tris.Count / 3} triangles, aspect {face.Aspect:F2}, {how}, " +
                         (face.UsesStyleSlot ? "paint-style slot" : "main texture (no paint styles)") +
-                        $"{(face.PaintMask != null ? ", kept to the vanilla paint area" : "")}{(snap.FromGpu ? ", mesh read from the GPU" : "")}.";
+                        $"{(face.PaintMask != null ? ", kept to the vanilla paint area" : "")}{(snap.FromGpu ? ", mesh read from the GPU" : "")}" +
+                        (face.CentreU >= 0 ? $", centre on the boss at {face.CentreU:F2},{face.CentreV:F2}" : "") + ".";
             return face;
         }
 

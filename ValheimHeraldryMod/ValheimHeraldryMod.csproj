@@ -68,8 +68,14 @@
     <EmbeddedResource Include="Art\Tabard.hskin">
       <LogicalName>ValheimHeraldryMod.Tabard.hskin</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Art\Hippoflotomas.png">
+      <LogicalName>ValheimHeraldryMod.Hippoflotomas.png</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Art\PaintBottle.hmesh">
       <LogicalName>ValheimHeraldryMod.PaintBottle.hmesh</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Art\StandardLarge.hmesh">
+      <LogicalName>ValheimHeraldryMod.StandardLarge.hmesh</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="Art\HeraldTable.hmesh">
       <LogicalName>ValheimHeraldryMod.HeraldTable.hmesh</LogicalName>

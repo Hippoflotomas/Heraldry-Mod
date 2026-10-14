@@ -22,6 +22,8 @@ namespace ValheimHeraldryMod.Heraldry
         private const int LineMinArea = 40;
 
         public readonly string Key;
+        /// <summary>Width over height of the picture it was made from (it's centred in a square).</summary>
+        public float Aspect = 1f;
         private readonly float[] sdf;     // pixels, negative inside: body plus claws and tongue
         private readonly float[] sdfDisarmed, sdfMorne, sdfPlain; // the outline without parts of the mask
         private readonly float[] r, g, b; // straight colour, 0..1
@@ -150,8 +152,10 @@ namespace ValheimHeraldryMod.Heraldry
             // The shape's larger extent spans the charge box the way a roundel does (-0.94..0.94)
             float bcx = (minX + maxX + 1) * 0.5f, bcy = (minY + maxY + 1) * 0.5f;
             float extent = Math.Max(maxX - minX + 1, maxY - minY + 1) * 0.5f;
-            return new ChargeArt(key, new[] { sdf, sdfDisarmed, sdfMorne, sdfPlain }, pr, pg, pb, lines, body, armed, langued,
+            var art = new ChargeArt(key, new[] { sdf, sdfDisarmed, sdfMorne, sdfPlain }, pr, pg, pb, lines, body, armed, langued,
                 bcx, bcy, extent / 0.94f);
+            art.Aspect = (maxX - minX + 1) / (float)Math.Max(1, maxY - minY + 1); // of the shape itself
+            return art;
         }
 
         private static bool[] Inside(float[] coverage)
@@ -493,6 +497,11 @@ namespace ValheimHeraldryMod.Heraldry
         public static void Register(string key, Rgba[] pixels, int w, int h, bool deriveLines, Rgba[] mask = null)
         {
             lock (Lock) Entries[key] = new Entry { Pixels = pixels, Mask = mask, W = w, H = h, DeriveLines = deriveLines };
+        }
+
+        public static void Unregister(string key)
+        {
+            lock (Lock) Entries.Remove(key);
         }
 
         public static bool Has(string key)

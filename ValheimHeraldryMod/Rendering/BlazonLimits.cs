@@ -17,9 +17,10 @@ namespace ValheimHeraldryMod.Rendering
         public static string Problem(string text, Blazon parsed = null)
         {
             if (string.IsNullOrEmpty(text)) return null;
+            int visibleLength = BlazonText.Visible(text).Length; // the hidden fingerprints don't count
             int maxLength = HeraldryConfig.MaxBlazonLength, maxElements = HeraldryConfig.MaxBlazonElements;
-            if (text.Length > maxLength)
-                return $"too long for this server: {text.Length} characters, at most {maxLength}";
+            if (visibleLength > maxLength)
+                return $"too long for this server: {visibleLength} characters, at most {maxLength}";
             int elements = (parsed ?? BlazonParser.Parse(text)).Elements;
             if (elements > maxElements)
                 return $"too complex for this server: {elements} things to draw, at most {maxElements}";

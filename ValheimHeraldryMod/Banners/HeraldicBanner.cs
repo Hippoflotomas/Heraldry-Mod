@@ -70,7 +70,7 @@ namespace ValheimHeraldryMod.Banners
         ///     can't load, clear the slot so Custom/Vegetation falls back to its declared default ("bump" = flat).
         ///     _MetalTex cleared falls back to "black" (no metal).
         /// </summary>
-        private static void StripVanillaArt(Material m)
+        internal static void StripVanillaArt(Material m)
         {
             if (m.HasProperty("_BumpMap"))
                 m.SetTexture("_BumpMap", ClothNormal.Get());
@@ -94,11 +94,11 @@ namespace ValheimHeraldryMod.Banners
             var zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo != null)
             {
-                bool packsChanged = currentText != null && currentText.IndexOf('[') >= 0 && lastPackGeneration != ChargePacks.Generation;
+                bool packsChanged = currentText != null && currentText.IndexOf('[') >= 0 && lastPackGeneration != ChargeLibrary.Generation;
                 if (zdo.DataRevision == lastRevision && currentText != null && !packsChanged)
                     return;
                 lastRevision = zdo.DataRevision;
-                lastPackGeneration = ChargePacks.Generation;
+                lastPackGeneration = ChargeLibrary.Generation;
             }
 
             string text = BlazonTextureCache.Normalise(zdo?.GetString(BlazonZdoKey, "") ?? "");
@@ -124,9 +124,9 @@ namespace ValheimHeraldryMod.Banners
             if (nview == null || !nview.IsValid())
                 return "";
             string text = GetText();
-            string shown = string.IsNullOrEmpty(text) ? "<i>unpainted</i>" : $"\"{text}\"";
+            string shown = string.IsNullOrEmpty(text) ? "<i>unpainted</i>" : $"\"{TextArt.ForDisplay(Heraldry.BlazonText.Visible(text))}\"";
             // Until the editing window exists, show the first problem the parser found (cached per text).
-            string problemKey = text + "|" + ChargePacks.Generation;
+            string problemKey = text + "|" + ChargeLibrary.Generation;
             if (problemKey != hoverProblemFor)
             {
                 hoverProblemFor = problemKey;

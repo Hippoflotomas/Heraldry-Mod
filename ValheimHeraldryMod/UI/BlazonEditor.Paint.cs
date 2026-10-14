@@ -58,7 +58,7 @@ namespace ValheimHeraldryMod.UI
             string text = (input.text ?? "").Trim();
             string note = null;
             if (text.Length == 0) note = "Taking the arms off is free.";
-            else if (string.Equals(text, (target.GetText() ?? "").Trim(), System.StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(text, BlazonText.Visible(target.GetText() ?? "").Trim(), System.StringComparison.OrdinalIgnoreCase))
                 note = "Same arms: no paint needed.";
             else
             {

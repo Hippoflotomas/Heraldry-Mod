@@ -24,6 +24,11 @@ namespace ValheimHeraldryMod.Shields
         private ShieldTextures.Entry entry;
         private bool applied;
 
+        // Another modder's tagged face: the arms go on the face itself
+        private bool taggedChecked;
+        private TaggedFacePainter tagged;
+        private string taggedKey;
+
         /// <summary>Starts (or retargets) painting on this model. <paramref name="source"/> returns the blazon or "".</summary>
         public static void Attach(GameObject root, string prefabName, Func<string> source)
         {
@@ -52,8 +57,9 @@ namespace ValheimHeraldryMod.Shields
             string text;
             try { text = BlazonTextureCache.Normalise(source?.Invoke() ?? ""); }
             catch { text = ""; } // the source's object went away
-            if (text == current) return;
-            current = text;
+            string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text; // picture charges arriving: redraw
+            if (key == current) return;
+            current = key;
             Show(text);
         }
 
@@ -62,6 +68,17 @@ namespace ValheimHeraldryMod.Shields
             Restore();
             ShieldTextures.Release(entry);
             entry = null;
+
+            if (!taggedChecked)
+            {
+                taggedChecked = true;
+                tagged = TaggedFacePainter.On(gameObject);
+            }
+            if (tagged != null)
+            {
+                ShowTagged(text);
+                return;
+            }
             if (text.Length == 0) return;
 
             if (model == null)
@@ -92,8 +109,34 @@ namespace ValheimHeraldryMod.Shields
             applied = false;
         }
 
+        /// <summary>Arms on a tagged face: rendered in its own flat outline, around its centre point.</summary>
+        private void ShowTagged(string text)
+        {
+            BlazonTextureCache.Release(taggedKey);
+            taggedKey = null;
+            if (text.Length == 0)
+            {
+                tagged.Hide();
+                return;
+            }
+            var f = tagged.Face;
+            const int Longest = 512;
+            int w = f.Aspect >= 1f ? Longest : Mathf.Max(32, Mathf.RoundToInt(Longest * f.Aspect));
+            int h = f.Aspect >= 1f ? Mathf.Max(32, Mathf.RoundToInt(Longest / f.Aspect)) : Longest;
+            var shape = new BlazonTextureCache.Shape
+            {
+                Id = "Heraldry_Tagged_" + f.Key, UV = f.OutlineUV, Triangles = f.OutlineTriangles,
+                Arrangement = Heraldry.FieldRenderer.Arrangement.Compact, CentreU = f.CentreU, CentreV = f.CentreV,
+            };
+            var tex = BlazonTextureCache.Acquire(text, w, h, shape, out taggedKey);
+            tagged.Show(tex);
+        }
+
         private void OnDestroy()
         {
+            tagged?.Destroy();
+            BlazonTextureCache.Release(taggedKey);
+            taggedKey = null;
             Restore();
             ShieldTextures.Release(entry);
             entry = null;

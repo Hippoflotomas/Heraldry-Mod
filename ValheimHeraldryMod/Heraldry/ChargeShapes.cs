@@ -27,6 +27,22 @@ namespace ValheimHeraldryMod.Heraldry
 
         public static bool FallbackMagenta(float u, float v) => (u < 0) == (v < 0);
 
+        // The scroll (a motto ribbon): a band curving up at its ends, the ends folded under and forked
+        public const float ScrollHalf = 0.13f;  // half the ribbon's thickness
+        public const float ScrollFold = 0.80f;  // where the ends turn under
+        /// <summary>The ribbon's centre line (v down): lower in the middle, rising to the ends.</summary>
+        public static float ScrollCurve(float u) => 0.05f - 0.12f * u * u;
+        /// <summary>A scroll is about five times as wide as it is tall.</summary>
+        public const float ScrollAspect = 5f;
+
+        private static float Scroll(float u, float v)
+        {
+            float across = Math.Abs(v - ScrollCurve(u)) - ScrollHalf;
+            float t = Math.Min(1f, Math.Abs(v - ScrollCurve(u)) / ScrollHalf);
+            float ends = Math.Abs(u) - (0.98f - 0.16f * (1f - t)); // a V notch cut into each end
+            return Math.Max(across, ends);
+        }
+
         public static float Distance(Charge c, float u, float v)
         {
             Orient(c, ref u, ref v);
@@ -49,6 +65,8 @@ namespace ValheimHeraldryMod.Heraldry
                 }
                 case "rustre":
                     return Math.Max(Rhombus(u, v, 0.64f, 0.96f), -Circle(u, v, 0.22f));
+                case "scroll":
+                    return Scroll(u, v);
                 case "billet":
                     return Box(u, v, 0.52f, 0.94f);
                 case "mullet":

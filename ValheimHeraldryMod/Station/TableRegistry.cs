@@ -166,7 +166,8 @@ namespace ValheimHeraldryMod.Station
 
             var wood = From("woodwall", "woodwall");
             var metal = From("iron_wall_1x1", "metalwall") ?? wood;
-            var result = new Dictionary<string, Material> { { "Wood", wood }, { "Metal", metal } };
+            var stone = From("stone_wall_1x1", "stonewall") ?? wood; // the large standard's foot
+            var result = new Dictionary<string, Material> { { "Wood", wood }, { "Metal", metal }, { "Stone", stone } };
 
             // No glass or bristle material in the game that's easy to borrow: tinted copies of the metal
             var glass = new Material(metal) { name = "Heraldry_Glass", color = new Color(0.78f, 0.86f, 0.92f) };

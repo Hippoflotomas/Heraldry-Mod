@@ -16,21 +16,28 @@ namespace ValheimHeraldryMod
         public const string PluginVersion = "0.0.1";
 
         // https://valheim-modding.github.io/Jotunn/tutorials/localization.html
+        /// <summary>The plugin, for coroutines.</summary>
+        public static ValheimHeraldryMod Instance { get; private set; }
+
         public static CustomLocalization Localization = LocalizationManager.Instance.GetLocalization();
 
         private void Awake()
         {
             Jotunn.Logger.LogInfo($"{PluginName} {PluginVersion} has landed");
 
+            Instance = this;
             HeraldryConfig.Bind(Config);
-            Heraldry.ChargeArtLibrary.IsBlocked = Rendering.IconArt.IsBlocked;
+            // Placeholder instead: blocked/blacklisted picture charges, and game icons the server excludes
+            Heraldry.ChargeArtLibrary.IsBlocked = key => Rendering.ChargeLibrary.Instance.IsArtKeyHidden(key) || Rendering.IconArt.IsBlocked(key);
             Heraldry.Lexicon.GameItems = Rendering.IconArt.Instance;
-            Rendering.ChargePacks.Instance.LoadLocal();
-            Rendering.PackSync.Init();
-            CommandManager.Instance.AddConsoleCommand(new Rendering.PacksCommand());
-            CommandManager.Instance.AddConsoleCommand(new Rendering.TrustCommand());
-            CommandManager.Instance.AddConsoleCommand(new Rendering.UntrustCommand());
-            Heraldry.Lexicon.Packs = Rendering.ChargePacks.Instance;
+            Heraldry.Lexicon.SecretsAllowed = () => HeraldryConfig.AllowSecretBlazons;
+            Heraldry.Lexicon.MaxInscription = () => HeraldryConfig.MaxInscriptionLength;
+            // Your own charges (a dedicated server has no player, only its server folder, loaded when it starts)
+            if (UnityEngine.SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null)
+                Rendering.ChargeLibrary.Instance.LoadOwn();
+            Rendering.ChargeSync.Init();
+            Rendering.ChargeCommands.Register();
+            Heraldry.Lexicon.Packs = Rendering.ChargeLibrary.Instance;
             Banners.BannerRegistry.Init();
             Station.TableRegistry.Init();
             Tabards.TabardItem.Init();
@@ -38,7 +45,7 @@ namespace ValheimHeraldryMod
 
             // Patches applied one class at a time, so if a game update breaks one, only that feature is lost
             var harmony = new HarmonyLib.Harmony(PluginGUID);
-            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch), typeof(Tabards.TabardEquip), typeof(Tabards.TabardVisuals), typeof(Rendering.ItemIcons) })
+            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch), typeof(Tabards.TabardEquip), typeof(Tabards.TabardVisuals), typeof(Rendering.ItemIcons), typeof(Banners.HeraldicPiecePatches), typeof(Rendering.LogoArt) })
             {
                 try
                 {
@@ -61,8 +68,9 @@ namespace ValheimHeraldryMod
             Shields.ShieldTextures.Pump();
             Tabards.TabardTextures.Pump();
             Rendering.ItemIcons.Pump();
+            Banners.HeraldicPiece.CheckAlternativeKey();
             // Notice joining and leaving other people's servers (their charge packs)
-            Rendering.PackSync.Update();
+            Rendering.ChargeSync.Update();
         }
     }
 }

@@ -65,7 +65,7 @@ namespace ValheimHeraldryMod.Shields
         public static Entry Acquire(ShieldFace face, string normalisedText)
         {
             normalisedText = BlazonLimits.Drawable(normalisedText);
-            string key = face.Key + "|" + normalisedText + (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
+            string key = face.Key + "|" + normalisedText + (normalisedText.IndexOf('[') >= 0 ? "|packs" + ChargeLibrary.Generation : "");
             if (!Entries.TryGetValue(key, out var entry))
             {
                 entry = new Entry { Key = key, Face = face };
@@ -89,7 +89,7 @@ namespace ValheimHeraldryMod.Shields
                 entry.Job = Task.Run(() =>
                 {
                     var outline = OutlineMask.FromTriangles(face.OutlineUV, face.OutlineTriangles, pw, ph);
-                    var arms = FieldRenderer.Render(blazon, pw, ph, outline, FieldRenderer.Arrangement.Compact);
+                    var arms = FieldRenderer.Render(blazon, pw, ph, outline, FieldRenderer.Arrangement.Compact, face.CentreU, face.CentreV);
                     return Bake(face, arms, pw, ph, w, h, background);
                 });
                 Pending.Add(entry);
@@ -164,6 +164,7 @@ namespace ValheimHeraldryMod.Shields
                 {
                     var p = t.PA * wa + t.PB * wb + t.PC * wc;
                     var c = Sample(arms, pw, ph, p.x, 1f - p.y); // the arms' rows run top down
+                    if (c.A < 128) return; // tattered: the paint is worn off here, the shield shows
                     byte a = 255;
                     if (face.PaintMask != null)
                     {
@@ -194,7 +195,7 @@ namespace ValheimHeraldryMod.Shields
             float tx = fx - x0, ty = fy - y0;
             Rgba a = px[y0 * w + x0], b = px[y0 * w + x1], c = px[y1 * w + x0], d = px[y1 * w + x1];
             byte L(byte p, byte q, byte r, byte s) { float top = p + (q - p) * tx, bot = r + (s - r) * tx; return (byte)Mathf.Clamp(Mathf.RoundToInt(top + (bot - top) * ty), 0, 255); }
-            return new Rgba(L(a.R, b.R, c.R, d.R), L(a.G, b.G, c.G, d.G), L(a.B, b.B, c.B, d.B));
+            return new Rgba(L(a.R, b.R, c.R, d.R), L(a.G, b.G, c.G, d.G), L(a.B, b.B, c.B, d.B), L(a.A, b.A, c.A, d.A));
         }
 
         private delegate void PixelVisitor(int x, int y, float wa, float wb, float wc);

@@ -52,10 +52,10 @@ namespace ValheimHeraldryMod.Rendering
             if (text.Length == 0 || item.m_dropPrefab == null) return null;
             string prefab = item.m_dropPrefab.name;
             bool tabard = Tabards.TabardItem.IsTabard(item);
-            if (!tabard && (!HeraldicShield.IsShield(item) || HeraldryConfig.IsShieldExcluded(prefab))) return null;
+            if (!tabard && (!HeraldicShield.IsShield(item) || (HeraldryConfig.IsShieldExcluded(prefab) && !TaggedFace.HasTag(item.m_dropPrefab)))) return null;
 
             text = BlazonLimits.Drawable(BlazonTextureCache.Normalise(text));
-            string key = prefab + "|" + text + (text.IndexOf('[') >= 0 ? "|packs" + ChargePacks.Generation : "");
+            string key = prefab + "|" + text + (text.IndexOf('[') >= 0 ? "|packs" + ChargeLibrary.Generation : "");
             if (Cache.TryGetValue(key, out var entry)) return entry.Sprite;
 
             // The shape: the shield's face, or the tabard's front panel
@@ -63,6 +63,7 @@ namespace ValheimHeraldryMod.Rendering
             float[] uv;
             int[] tris;
             FieldRenderer.Arrangement arrangement;
+            float cu = -1f, cv = -1f;
             if (tabard)
             {
                 var panel = Tabards.TabardMesh.Front;
@@ -76,6 +77,7 @@ namespace ValheimHeraldryMod.Rendering
                 if (face == null) return null;
                 aspect = face.Aspect; uv = face.OutlineUV; tris = face.OutlineTriangles;
                 arrangement = FieldRenderer.Arrangement.Compact;
+                cu = face.CentreU; cv = face.CentreV;
             }
 
             if (Cache.Count >= MaxCached) Clear();
@@ -85,17 +87,17 @@ namespace ValheimHeraldryMod.Rendering
             var blazon = BlazonParser.Parse(text);
             IconArt.EnsureFor(blazon); // game icons are read here, on the main thread, before the worker runs
             entry = new Entry();
-            entry.Job = Task.Run(() => Draw(blazon, uv, tris, pw, ph, arrangement));
+            entry.Job = Task.Run(() => Draw(blazon, uv, tris, pw, ph, arrangement, cu, cv));
             Cache[key] = entry;
             Pending.Add(entry);
             return null;
         }
 
         /// <summary>The arms inside the outline, a dark rim around it, centred in a transparent square (rows bottom first).</summary>
-        private static Color32[] Draw(Blazon blazon, float[] uv, int[] tris, int pw, int ph, FieldRenderer.Arrangement arrangement)
+        private static Color32[] Draw(Blazon blazon, float[] uv, int[] tris, int pw, int ph, FieldRenderer.Arrangement arrangement, float cu, float cv)
         {
             var mask = OutlineMask.FromTriangles(uv, tris, pw, ph);
-            var arms = FieldRenderer.Render(blazon, pw, ph, mask, arrangement);
+            var arms = FieldRenderer.Render(blazon, pw, ph, mask, arrangement, cu, cv);
             var px = new Color32[Size * Size];
             int ox = (Size - pw) / 2, oy = (Size - ph) / 2;
             bool In(int x, int y) => x >= 0 && y >= 0 && x < pw && y < ph && (mask == null || mask[y * pw + x]); // null = the whole box
@@ -106,6 +108,7 @@ namespace ValheimHeraldryMod.Rendering
                     bool rim = !In(x - 1, y) || !In(x + 1, y) || !In(x, y - 1) || !In(x, y + 1)
                                || !In(x - 2, y) || !In(x + 2, y) || !In(x, y - 2) || !In(x, y + 2);
                     var c = arms[y * pw + x];
+                    if (!rim && c.A < 128) continue; // tattered: a gap
                     int ty = Size - 1 - (oy + y); // the render's rows run top down
                     px[ty * Size + ox + x] = rim ? Edge : new Color32(c.R, c.G, c.B, 255);
                 }
