@@ -17,6 +17,8 @@ namespace ValheimHeraldryMod.Heraldry
         {
             public string Text;     // lower case, accents removed
             public WordNote Note;
+            /// <summary>A comma or semicolon came just before this word.</summary>
+            public bool AfterComma;
         }
 
         private readonly List<Tok> toks = new List<Tok>();
@@ -58,6 +60,7 @@ namespace ValheimHeraldryMod.Heraldry
         private void Tokenize(string text)
         {
             int i = 0;
+            bool comma = false;
             while (i < text.Length)
             {
                 char c = text[i];
@@ -100,6 +103,7 @@ namespace ValheimHeraldryMod.Heraldry
                 }
                 else
                 {
+                    if (c == ',' || c == ';') comma = true;
                     i++; // punctuation: one character, always fine
                     result.Words.Add(new WordNote { Start = start, Length = 1, Word = text.Substring(start, 1), Status = WordStatus.Correct });
                     continue;
@@ -108,7 +112,8 @@ namespace ValheimHeraldryMod.Heraldry
                 if (raw.Length == 0) continue;
                 var note = new WordNote { Start = start, Length = i - start, Word = text.Substring(start, i - start), Status = (WordStatus)(-1) };
                 result.Words.Add(note);
-                toks.Add(new Tok { Text = Fold(raw), Note = note });
+                toks.Add(new Tok { Text = Fold(raw), Note = note, AfterComma = comma });
+                comma = false;
             }
         }
 
@@ -421,11 +426,13 @@ namespace ValheimHeraldryMod.Heraldry
                 return;
             }
 
-            if (w == "in" && Peek(1) != null && IsPlacementWord(Peek(1)))
+            if (w == "in" && Peek(1) != null && (IsPlacementWord(Peek(1)) || IsPointStart(Peek(1), Peek(2))))
             {
-                Take();
+                // "a mullet in dexter chief" places the mullet; ", in dexter chief a mullet" places what follows
+                bool forNext = Take().AfterComma;
+                if (Cur == "the") Take();
                 var placeTok = Take();
-                var place = PlacementFor(placeTok.Text);
+                var place = PointFor(placeTok) ?? PlacementFor(placeTok.Text);
                 if (place == Placement.Bend && Cur == "sinister")
                 {
                     Take();
@@ -433,7 +440,7 @@ namespace ValheimHeraldryMod.Heraldry
                 }
                 if (place == Placement.None)
                     Mark(placeTok, WordStatus.Unsupported, $"'in {placeTok.Text}' isn't drawn yet; the charges keep their usual arrangement");
-                if (lastCharge != null && lastCharge.Placement == Placement.None)
+                if (lastCharge != null && lastCharge.Placement == Placement.None && !(forNext && !AtEnd))
                     lastCharge.Placement = place;
                 else
                     pendingPlacement = place;
@@ -461,6 +468,46 @@ namespace ValheimHeraldryMod.Heraldry
             }
 
             ParseOrdinaryOrCharge();
+        }
+
+        /// <summary>"in [the] dexter chief", "in sinister", "in fess point", "in honour point"...</summary>
+        private static bool IsPointStart(string w, string next) =>
+            w == "dexter" || w == "sinister" || w == "middle" || w == "honour" || w == "honor" || w == "nombril" ||
+            (w == "the" && next != null && (IsPlacementWord(next) || IsPointStart(next, null))) ||
+            ((w == "fess" || w == "fesse") && next == "point");
+
+        /// <summary>A point of the shield starting with this word (more words are taken as needed), or null.</summary>
+        private Placement? PointFor(Tok first)
+        {
+            switch (first.Text)
+            {
+                case "dexter":
+                case "sinister":
+                {
+                    bool dexter = first.Text == "dexter";
+                    if (Cur == "chief") { Take(); return dexter ? Placement.DexterChief : Placement.SinisterChief; }
+                    if (Cur == "base") { Take(); return dexter ? Placement.DexterBase : Placement.SinisterBase; }
+                    if (Cur == "flank" || Cur == "side") Take();
+                    return dexter ? Placement.DexterFlank : Placement.SinisterFlank;
+                }
+                case "middle":
+                    if (Cur == "chief") { Take(); return Placement.MiddleChief; }
+                    if (Cur == "base") { Take(); return Placement.MiddleBase; }
+                    return Placement.FessPoint;
+                case "honour":
+                case "honor":
+                    if (Cur == "point") Take();
+                    return Placement.HonourPoint;
+                case "nombril":
+                    if (Cur == "point") Take();
+                    return Placement.NombrilPoint;
+                case "fess":
+                case "fesse":
+                    if (Cur != "point") return null;
+                    Take();
+                    return Placement.FessPoint;
+            }
+            return null;
         }
 
         private static bool IsPlacementWord(string w) =>

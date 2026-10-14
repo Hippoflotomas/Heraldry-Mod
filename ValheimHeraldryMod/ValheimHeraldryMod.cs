@@ -56,6 +56,7 @@ namespace ValheimHeraldryMod
         {
             // Upload banner textures that finished rendering on worker threads
             Rendering.BlazonTextureCache.Pump();
+            Shields.ShieldTextures.Pump();
             // Notice joining and leaving other people's servers (their charge packs)
             Rendering.PackSync.Update();
         }

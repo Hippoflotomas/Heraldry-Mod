@@ -10,7 +10,7 @@ namespace ValheimHeraldryMod.Shields
     ///         <item>on the ground: the item's own data, which the game already saves with dropped items;</item>
     ///         <item>on item stands: written next to the item in the stand's ZDO whenever the game saves an item there.</item>
     ///     </list>
-    ///     Armour stands are not done yet.
+    ///     Armour stands: the same, under the slot's number.
     /// </summary>
     [HarmonyPatch]
     internal static class ShieldPatches
@@ -24,6 +24,8 @@ namespace ValheimHeraldryMod.Shields
         private static readonly AccessTools.FieldRef<Humanoid, VisEquipment> HumanoidVis = AccessTools.FieldRefAccess<Humanoid, VisEquipment>("m_visEquipment");
         private static readonly AccessTools.FieldRef<VisEquipment, ZNetView> VisNView = AccessTools.FieldRefAccess<VisEquipment, ZNetView>("m_nview");
         private static readonly AccessTools.FieldRef<VisEquipment, bool> VisIsPlayer = AccessTools.FieldRefAccess<VisEquipment, bool>("m_isPlayer");
+        private static readonly AccessTools.FieldRef<VisEquipment, bool> VisIsArmorStand = AccessTools.FieldRefAccess<VisEquipment, bool>("m_isArmorStand");
+        private static readonly AccessTools.FieldRef<ArmorStand, ZNetView> StandNViewA = AccessTools.FieldRefAccess<ArmorStand, ZNetView>("m_nview");
         private static readonly AccessTools.FieldRef<VisEquipment, GameObject> VisLeft = AccessTools.FieldRefAccess<VisEquipment, GameObject>("m_leftItemInstance");
         private static readonly AccessTools.FieldRef<VisEquipment, GameObject> VisLeftBack = AccessTools.FieldRefAccess<VisEquipment, GameObject>("m_leftBackItemInstance");
         private static readonly AccessTools.FieldRef<VisEquipment, int> VisLeftHash = AccessTools.FieldRefAccess<VisEquipment, int>("m_currentLeftItemHash");
@@ -77,11 +79,31 @@ namespace ValheimHeraldryMod.Shields
         [HarmonyPostfix]
         private static void PaintEquipment(VisEquipment __instance)
         {
-            if (!VisIsPlayer(__instance)) return;
-            var nview = VisNView(__instance);
-            if (nview == null || !nview.IsValid()) return;
-            Hook(VisLeft(__instance), VisLeftHash(__instance), nview, ZdoLeft);
-            Hook(VisLeftBack(__instance), VisLeftBackHash(__instance), nview, ZdoBack);
+            if (VisIsPlayer(__instance))
+            {
+                var nview = VisNView(__instance);
+                if (nview == null || !nview.IsValid()) return;
+                Hook(VisLeft(__instance), VisLeftHash(__instance), nview, ZdoLeft);
+                Hook(VisLeftBack(__instance), VisLeftBackHash(__instance), nview, ZdoBack);
+            }
+            else if (VisIsArmorStand(__instance))
+            {
+                // Armour stands: each slot's item is saved under its slot number, and we note the arms beside it
+                var left = VisLeft(__instance);
+                var back = VisLeftBack(__instance);
+                bool needLeft = left != null && left.GetComponent<HeraldicShield>() == null;
+                bool needBack = back != null && back.GetComponent<HeraldicShield>() == null;
+                if (!needLeft && !needBack) return;
+                var stand = __instance.GetComponentInParent<ArmorStand>();
+                var nview = stand != null ? StandNViewA(stand) : null;
+                if (nview == null || !nview.IsValid()) return;
+                for (int i = 0; i < stand.m_slots.Count; i++)
+                {
+                    var slot = stand.m_slots[i].m_slot;
+                    if (needLeft && slot == VisSlot.HandLeft) Hook(left, VisLeftHash(__instance), nview, i + "_" + ZdoItem);
+                    if (needBack && slot == VisSlot.BackLeft) Hook(back, VisLeftBackHash(__instance), nview, i + "_" + ZdoItem);
+                }
+            }
         }
 
         private static void Hook(GameObject instance, int hash, ZNetView nview, string key)

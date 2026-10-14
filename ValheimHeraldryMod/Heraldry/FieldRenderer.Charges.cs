@@ -389,8 +389,42 @@ namespace ValheimHeraldryMod.Heraldry
                 }
                 case Placement.Orle:
                     return Around(dOver, 0.16f * unit, n, 0.16f * unit * 0.85f);
+                case Placement.DexterChief: case Placement.MiddleChief: case Placement.SinisterChief:
+                case Placement.DexterFlank: case Placement.SinisterFlank:
+                case Placement.DexterBase: case Placement.MiddleBase: case Placement.SinisterBase:
+                case Placement.HonourPoint: case Placement.FessPoint: case Placement.NombrilPoint:
+                    return AtPoint(c.Placement, n);
             }
             return RowsInBox(DefaultRows(n), 0, 0, w, fh, true);
+        }
+
+        /// <summary>
+        ///     The points of the shield: the free field (inside a bordure, below a chief) split into thirds each
+        ///     way; the honour and nombril points sit halfway between the fess point and the chief or base.
+        /// </summary>
+        private Group AtPoint(Placement p, int n)
+        {
+            float top = 0, bottom = fh;
+            FreeBox(ref top, ref bottom, out float left, out float right);
+            float cw = (right - left) / 3f, rh = (bottom - top) / 3f;
+            int col = 1, row = 1;
+            float rowsOffset = 0f;
+            switch (p)
+            {
+                case Placement.DexterChief: col = 0; row = 0; break;
+                case Placement.MiddleChief: row = 0; break;
+                case Placement.SinisterChief: col = 2; row = 0; break;
+                case Placement.DexterFlank: col = 0; break;
+                case Placement.SinisterFlank: col = 2; break;
+                case Placement.DexterBase: col = 0; row = 2; break;
+                case Placement.MiddleBase: row = 2; break;
+                case Placement.SinisterBase: col = 2; row = 2; break;
+                case Placement.HonourPoint: rowsOffset = -0.5f; break;
+                case Placement.NombrilPoint: rowsOffset = 0.5f; break;
+            }
+            float x0 = left + col * cw, y0 = top + (row + rowsOffset) * rh;
+            var rows = n <= 3 ? new[] { n } : DefaultRows(n);
+            return RowsInBox(rows, x0, y0, x0 + cw, y0 + rh, false);
         }
 
         private static int[] Repeat(int v, int n)

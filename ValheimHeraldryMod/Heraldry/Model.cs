@@ -111,7 +111,13 @@ namespace ValheimHeraldryMod.Heraldry
     public enum MaskMode { Normal, Disarmed, Morne, Plain }
 
     /// <summary>Where a group of charges goes. None = the default arrangement for the count.</summary>
-    public enum Placement { None, Pale, Fess, Bend, BendSinister, Saltire, Cross, Chief, Base, Orle, Between, On }
+    public enum Placement
+    {
+        None, Pale, Fess, Bend, BendSinister, Saltire, Cross, Chief, Base, Orle, Between, On,
+        // Points of the shield ("in dexter chief"): dexter is the bearer's right, the viewer's left
+        DexterChief, MiddleChief, SinisterChief, DexterFlank, SinisterFlank, DexterBase, MiddleBase, SinisterBase,
+        HonourPoint, FessPoint, NombrilPoint,
+    }
 
     public sealed class Charge
     {
