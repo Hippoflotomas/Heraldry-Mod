@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Jotunn.Managers;
@@ -217,7 +217,7 @@ namespace ValheimHeraldryMod.UI
                 if (previewTexture != null) Destroy(previewTexture);
                 previewTexture = new Texture2D(previewW, previewH, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
             }
-            previewMask = OutlineMask.FromTriangles(target.m_outlineUV, target.m_outlineTriangles, previewW, previewH);
+            previewMask = OutlineMask.FromTriangles(target.m_outlineUV, target.m_outlineTriangles, previewW, previewH, target.m_hiddenTop);
             preview.texture = previewTexture;
 
             input.text = target.GetText();

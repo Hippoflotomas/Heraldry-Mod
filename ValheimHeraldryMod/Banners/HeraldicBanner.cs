@@ -23,6 +23,8 @@ namespace ValheimHeraldryMod.Banners
         /// <summary>Cloth mesh triangles in texture space (x,y pairs, V up), for the bordure's outline.</summary>
         public float[] m_outlineUV;
         public int[] m_outlineTriangles;
+        /// <summary>Fraction of the cloth's height, from the top, hidden by the beam it hangs from.</summary>
+        public float m_hiddenTop;
 
         private ZNetView nview;
         private readonly List<Material> materials = new List<Material>();
@@ -102,7 +104,7 @@ namespace ValheimHeraldryMod.Banners
             if (BlazonTextureCache.KeyFor(m_shapeId, text, width, height) == cacheKey)
                 return;
 
-            var shape = new BlazonTextureCache.Shape { Id = m_shapeId, UV = m_outlineUV, Triangles = m_outlineTriangles };
+            var shape = new BlazonTextureCache.Shape { Id = m_shapeId, UV = m_outlineUV, Triangles = m_outlineTriangles, HiddenTop = m_hiddenTop };
             var tex = BlazonTextureCache.Acquire(text, width, height, shape, out string newKey);
             BlazonTextureCache.Release(cacheKey);   // after Acquire, so an unchanged texture isn't destroyed and rebuilt
             cacheKey = newKey;

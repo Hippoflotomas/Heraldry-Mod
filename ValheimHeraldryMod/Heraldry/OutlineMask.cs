@@ -10,8 +10,9 @@ namespace ValheimHeraldryMod.Heraldry
     {
         /// <param name="uv">x,y pairs in 0..1, V pointing up (Unity convention).</param>
         /// <param name="triangles">vertex indices, three per triangle.</param>
+        /// <param name="hiddenTop">Fraction of the height, from the top, that can't be seen (behind the beam).</param>
         /// <returns>w*h flags, rows top to bottom; null if the mesh covers (almost) the whole rectangle.</returns>
-        public static bool[] FromTriangles(float[] uv, int[] triangles, int w, int h)
+        public static bool[] FromTriangles(float[] uv, int[] triangles, int w, int h, float hiddenTop = 0f)
         {
             if (uv == null || triangles == null || triangles.Length < 3) return null;
             var mask = new bool[w * h];
@@ -38,6 +39,7 @@ namespace ValheimHeraldryMod.Heraldry
                 }
             }
             FillTopNotches(mask, w, h);
+            HideTop(mask, w, h, hiddenTop);
             int covered = 0;
             foreach (bool m in mask) if (m) covered++;
             return covered > w * h * 0.995f ? null : mask;
@@ -49,6 +51,16 @@ namespace ValheimHeraldryMod.Heraldry
         ///     and the editor's preview shows a clean edge. (The real cloth still has its gaps; nothing is painted
         ///     there that anyone can see.)
         /// </summary>
+        /// <summary>
+        ///     Marks the rows behind the beam as not cloth. The renderer lays the arms out below them and fills
+        ///     them with the colour of the top visible row.
+        /// </summary>
+        public static void HideTop(bool[] mask, int w, int h, float hiddenTop)
+        {
+            int rows = (int)Math.Round(Math.Max(0f, Math.Min(0.3f, hiddenTop)) * h);
+            for (int i = 0; i < rows * w; i++) mask[i] = false;
+        }
+
         public static void FillTopNotches(bool[] mask, int w, int h)
         {
             for (int y = 0; y < h / 4; y++)

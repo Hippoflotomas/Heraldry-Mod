@@ -21,6 +21,8 @@ namespace ValheimHeraldryMod.Rendering
             public string Id;
             public float[] UV;
             public int[] Triangles;
+            /// <summary>Fraction of the height, from the top, that can't be seen (behind the beam).</summary>
+            public float HiddenTop;
         }
 
         private sealed class Entry
@@ -70,9 +72,10 @@ namespace ValheimHeraldryMod.Rendering
                     Fill(tex, PreviewColour(blazon), false);
                     float[] uv = shape?.UV;
                     int[] tris = shape?.Triangles;
+                    float hidden = shape?.HiddenTop ?? 0f;
                     entry.Job = Task.Run(() =>
                     {
-                        var mask = OutlineMask.FromTriangles(uv, tris, width, height);
+                        var mask = OutlineMask.FromTriangles(uv, tris, width, height, hidden);
                         return FieldRenderer.Render(blazon, width, height, mask);
                     });
                     Pending.Add(entry);

@@ -26,6 +26,7 @@ static class Program
                     if (fy < 0.03f && Frac(fx * 4) > 0.75f) mask[y * w + x] = false;
                 }
                 OutlineMask.FillTopNotches(mask, w, h);
+                OutlineMask.HideTop(mask, w, h, 0.065f); // roughly what the vanilla banner's beam hides
             }
             // optional 7th argument: compact | spread | reflow (how field charges use the tall banner)
             var arrangement = args.Length > 6

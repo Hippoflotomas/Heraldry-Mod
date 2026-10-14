@@ -45,8 +45,35 @@ namespace ValheimHeraldryMod.Heraldry
         ///     <paramref name="arrangement"/>: how charges without a placement use the surface (banners: Spread).
         /// </summary>
         public static Rgba[] Render(Blazon blazon, int width, int height, bool[] outline = null,
-            Arrangement arrangement = Arrangement.Spread) =>
-            new FieldRenderer(blazon, width, height, outline, arrangement).Run();
+            Arrangement arrangement = Arrangement.Spread)
+        {
+            // Rows hidden at the top (behind the beam, empty in the outline): lay the arms out on the visible part
+            // only, so a chief or bordure starts where the cloth can be seen, then carry the top row up into them.
+            int hidden = HiddenRows(outline, width, height);
+            if (hidden == 0)
+                return new FieldRenderer(blazon, width, height, outline, arrangement).Run();
+            int vh = height - hidden;
+            var visibleOutline = new bool[width * vh];
+            Array.Copy(outline, hidden * width, visibleOutline, 0, visibleOutline.Length);
+            var visible = new FieldRenderer(blazon, width, vh, visibleOutline, arrangement).Run();
+            var px = new Rgba[width * height];
+            for (int y = 0; y < hidden; y++) Array.Copy(visible, 0, px, y * width, width);
+            Array.Copy(visible, 0, px, hidden * width, visible.Length);
+            return px;
+        }
+
+        /// <summary>Leading rows with (almost) no cloth in the outline; 0 if there's no outline.</summary>
+        private static int HiddenRows(bool[] outline, int w, int h)
+        {
+            if (outline == null || outline.Length != w * h) return 0;
+            for (int y = 0; y < h / 3; y++)
+            {
+                int covered = 0;
+                for (int x = 0; x < w; x++) if (outline[y * w + x]) covered++;
+                if (covered > w * 0.02f) return y;
+            }
+            return 0;
+        }
 
         private FieldRenderer(Blazon b, int width, int height, bool[] outline, Arrangement arrangement)
         {
