@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using HarmonyLib;
 using UnityEngine;
 using ValheimHeraldryMod.Rendering;
@@ -7,10 +8,11 @@ using ValheimHeraldryMod.Shields;
 namespace ValheimHeraldryMod.Banners
 {
     /// <summary>
-    ///     A build piece from another mod with a tagged face (ValheimHeraldryMod_Face): edited in place like our
-    ///     banners (ward access, blazon in the piece's ZDO, paint costs as banners). Added at runtime to any piece
-    ///     whose model carries the tag. E edits it when the piece has nothing else to do; when it has (a chest, a
-    ///     door), the alternative key does (Shift+E by default, configurable; Hippo 2026-10-14).
+    ///     A build piece from another mod with tagged faces (ValheimHeraldryMod_Face, _Face_1 … _4): edited in place like
+    ///     our banners (ward access, blazons in the piece's ZDO, paint costs as banners). Added at runtime to any piece
+    ///     whose model carries a tag. E edits it when the piece has nothing else to do; when it has (a chest, a
+    ///     door), the alternative key does (Shift+E by default, configurable; Hippo 2026-10-14). Up to four patterns,
+    ///     pattern 1 under the old key, 2–4 under the key plus their number (2026-10-16).
     /// </summary>
     public class HeraldicPiece : MonoBehaviour, Hoverable, Interactable, TextReceiver
     {
@@ -18,10 +20,11 @@ namespace ValheimHeraldryMod.Banners
         private TaggedFacePainter painter;
         private uint lastRevision = uint.MaxValue;
         private int lastGeneration = -1;
-        private string currentKey;
-        private string cacheKey;
 
-        internal TaggedFace Face => painter?.Face;
+        internal TaggedModel Model => painter?.Model;
+        /// <summary>The first part showing this pattern (for the editor's preview shape).</summary>
+        internal TaggedFace Face(int pattern) => painter?.Model.First(pattern) ?? painter?.Model.Faces.FirstOrDefault();
+        internal int[] Numbers => painter?.Model.Numbers ?? new int[0];
 
         private void Start()
         {
@@ -36,45 +39,17 @@ namespace ValheimHeraldryMod.Banners
         private void OnDestroy()
         {
             painter?.Destroy();
-            BlazonTextureCache.Release(cacheKey);
-            cacheKey = null;
         }
 
         private void Refresh()
         {
             var zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null || painter == null) return;
-            if (zdo.DataRevision == lastRevision && lastGeneration == ChargeLibrary.Generation && currentKey != null) return;
+            if (zdo.DataRevision == lastRevision && lastGeneration == ChargeLibrary.Generation) return;
             lastRevision = zdo.DataRevision;
             lastGeneration = ChargeLibrary.Generation;
-
-            string text = BlazonTextureCache.Normalise(zdo.GetString(HeraldicBanner.BlazonZdoKey, ""));
-            string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text;
-            if (key == currentKey) return;
-            currentKey = key;
-
-            if (text.Length == 0)
-            {
-                painter.Hide();
-                BlazonTextureCache.Release(cacheKey);
-                cacheKey = null;
-                return;
-            }
-            var f = painter.Face;
-            int longest = HeraldryConfig.EffectiveBannerResolution();
-            int w = f.Aspect >= 1f ? longest : Mathf.Max(32, Mathf.RoundToInt(longest * f.Aspect));
-            int h = f.Aspect >= 1f ? Mathf.Max(32, Mathf.RoundToInt(longest / f.Aspect)) : longest;
-            var tex = BlazonTextureCache.Acquire(text, w, h, Shape(f), out string newKey);
-            BlazonTextureCache.Release(cacheKey);
-            cacheKey = newKey;
-            painter.Show(tex);
+            painter.Refresh(GetText, HeraldryConfig.EffectiveBannerResolution(), Arrangement, "Heraldry_TaggedPiece_");
         }
-
-        internal static BlazonTextureCache.Shape Shape(TaggedFace f) => new BlazonTextureCache.Shape
-        {
-            Id = "Heraldry_TaggedPiece_" + f.Key, UV = f.OutlineUV, Triangles = f.OutlineTriangles,
-            Arrangement = Arrangement(f), CentreU = f.CentreU, CentreV = f.CentreV,
-        };
 
         /// <summary>Tall faces spread their charges down the cloth like banners; others keep them together like shields.</summary>
         internal static Heraldry.FieldRenderer.Arrangement Arrangement(TaggedFace f) =>
@@ -99,8 +74,7 @@ namespace ValheimHeraldryMod.Banners
         public string GetHoverText()
         {
             if (nview == null || !nview.IsValid() || painter == null) return "";
-            string text = GetText();
-            string shown = string.IsNullOrEmpty(text) ? "<i>unpainted</i>" : $"\"{TextArt.ForDisplay(Heraldry.BlazonText.Visible(text))}\"";
+            string shown = Describe(Numbers, GetText);
             if (!CanEdit(false)) return Localization.instance.Localize($"{DisplayName()}\n{shown}\n$piece_noaccess");
             return Localization.instance.Localize($"{DisplayName()}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] Write blazon");
         }
@@ -120,16 +94,37 @@ namespace ValheimHeraldryMod.Banners
 
         // ------------------------------------------------------------ TextReceiver
 
-        public string GetText() =>
-            nview != null && nview.IsValid() ? nview.GetZDO().GetString(HeraldicBanner.BlazonZdoKey, "") : "";
+        /// <summary>Pattern 1's blazon (the sign interface).</summary>
+        public string GetText() => GetText(1);
 
-        public void SetText(string text)
+        public string GetText(int pattern) =>
+            nview != null && nview.IsValid() ? nview.GetZDO().GetString(Patterns.Key(HeraldicBanner.BlazonZdoKey, pattern), "") : "";
+
+        public void SetText(string text) => SetText(text, 1);
+
+        public void SetText(string text, int pattern)
         {
             if (nview == null || !nview.IsValid() || !CanEdit(true)) return;
             if (text != null && text.Length > HeraldicBanner.MaxBlazonLength) text = text.Substring(0, HeraldicBanner.MaxBlazonLength);
             nview.ClaimOwnership();
-            nview.GetZDO().Set(HeraldicBanner.BlazonZdoKey, text ?? "");
+            nview.GetZDO().Set(Patterns.Key(HeraldicBanner.BlazonZdoKey, pattern), text ?? "");
             Refresh();
+        }
+
+        /// <summary>
+        ///     The arms for a hover or tooltip: one pattern as before; several listed by number, empty ones left out.
+        /// </summary>
+        internal static string Describe(int[] numbers, System.Func<int, string> textOf)
+        {
+            string Show(string t) => $"\"{TextArt.ForDisplay(Heraldry.BlazonText.Visible(t))}\"";
+            if (numbers.Length <= 1)
+            {
+                string t = textOf(numbers.Length == 1 ? numbers[0] : 1);
+                return string.IsNullOrEmpty(t) ? "<i>unpainted</i>" : Show(t);
+            }
+            var lines = numbers.Select(n => new { n, t = textOf(n) }).Where(x => !string.IsNullOrEmpty(x.t))
+                               .Select(x => $"{x.n}: {Show(x.t)}").ToList();
+            return lines.Count == 0 ? "<i>unpainted</i>" : string.Join("\n", lines);
         }
 
         /// <summary>True if the piece answers E itself (a chest, a door): then the alternative key edits the arms.</summary>
@@ -168,35 +163,47 @@ namespace ValheimHeraldryMod.Banners
             : HeraldryConfig.EditModifier.ToString().Replace("Left", "").Replace("Right", "") + "+" + HeraldryConfig.EditKey;
     }
 
-    /// <summary>The editor's view of a tagged piece.</summary>
+    /// <summary>The editor's view of a tagged piece: one pattern at a time.</summary>
     internal sealed class PieceTarget : UI.IBlazonTarget
     {
         private readonly HeraldicPiece piece;
         private readonly string name;
-        public PieceTarget(HeraldicPiece piece, string name) { this.piece = piece; this.name = name; }
+        private int pattern;
 
+        public PieceTarget(HeraldicPiece piece, string name)
+        {
+            this.piece = piece;
+            this.name = name;
+            var numbers = piece.Numbers;
+            pattern = numbers.Length > 0 ? numbers[0] : 1;
+        }
+
+        private TaggedFace Face => piece.Face(pattern);
         public string Title => string.IsNullOrEmpty(name) ? "Arms" : name;
         public string ApplyLabel => "Apply";
         public bool IsAlive => piece != null;
-        public float Aspect => piece.Face?.Aspect ?? 1f;
-        public float[] OutlineUV => piece.Face?.OutlineUV;
-        public int[] OutlineTriangles => piece.Face?.OutlineTriangles;
+        public float Aspect => Face?.Aspect ?? 1f;
+        public float[] OutlineUV => Face?.OutlineUV;
+        public int[] OutlineTriangles => Face?.OutlineTriangles;
         public float HiddenTop => 0f;
         public Heraldry.FieldRenderer.Arrangement Arrangement =>
-            piece.Face != null ? HeraldicPiece.Arrangement(piece.Face) : Heraldry.FieldRenderer.Arrangement.Compact;
-        public float CentreU => piece.Face?.CentreU ?? -1f;
-        public float CentreV => piece.Face?.CentreV ?? -1f;
+            Face != null ? HeraldicPiece.Arrangement(Face) : Heraldry.FieldRenderer.Arrangement.Compact;
+        public float CentreU => Face?.CentreU ?? -1f;
+        public float CentreV => Face?.CentreV ?? -1f;
         public IList<string> Choices => null;
         public IList<Sprite> ChoiceIcons => null;
         public int Chosen => -1;
         public string Choose(int index) => GetText();
+        public IList<int> Patterns => piece.Numbers;
+        public int Pattern => pattern;
+        public string ChoosePattern(int number) { pattern = number; return GetText(); }
         public string Blocked => null;
         public bool CostsPaint => HeraldryConfig.PaintCostsOnBanners;
-        public string GetText() => piece.GetText();
+        public string GetText() => piece.GetText(pattern);
 
         public string Apply(string text)
         {
-            piece.SetText(text);
+            piece.SetText(text, pattern);
             return null;
         }
     }
@@ -216,7 +223,7 @@ namespace ValheimHeraldryMod.Banners
             string name = Utils.GetPrefabName(go);
             if (!Tagged.TryGetValue(name, out bool has))
             {
-                has = TaggedFace.Find(go, out _, out _);
+                has = TaggedModel.HasTag(go);
                 Tagged[name] = has;
                 if (has) Jotunn.Logger.LogInfo($"[Heraldry] Piece '{name}' has a tagged heraldry face: arms can be painted on it.");
             }
@@ -232,7 +239,7 @@ namespace ValheimHeraldryMod.Banners
             bool hold = __1, alt = __2;
             if (!alt || hold || go == null || !HeraldryConfig.EditKeyIsAltUse) return true;
             var piece = go.GetComponentInParent<HeraldicPiece>();
-            if (piece == null || piece.Face == null || !piece.HasOwnInteraction()) return true;
+            if (piece == null || piece.Model == null || !piece.HasOwnInteraction()) return true;
             piece.OpenEditor();
             return false;
         }
@@ -244,7 +251,7 @@ namespace ValheimHeraldryMod.Banners
         {
             var player = __0;
             var piece = player?.GetHoverObject()?.GetComponentInParent<HeraldicPiece>();
-            if (piece == null || piece.Face == null || !piece.HasOwnInteraction()) return;
+            if (piece == null || piece.Model == null || !piece.HasOwnInteraction()) return;
             var label = __instance.m_hoverName;
             if (label == null || string.IsNullOrEmpty(label.text) || label.text.Contains("Edit arms")) return;
             label.text += $"\n[<color=yellow><b>{piece.AlternativeKeyLabel}</b></color>] Edit arms";

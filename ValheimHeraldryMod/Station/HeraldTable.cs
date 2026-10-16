@@ -118,6 +118,7 @@ namespace ValheimHeraldryMod.Station
         private readonly Player player;
         private readonly List<ItemDrop.ItemData> shields; // shields and tabards: everything paintable
         private int chosen;
+        private int pattern = 1;
 
         public TableTarget(HeraldTable table, Player player)
         {
@@ -129,7 +130,13 @@ namespace ValheimHeraldryMod.Station
                             || Tabards.TabardItem.IsTabard(i))
                 .OrderByDescending(i => i.m_equipped)
                 .ToList();
+            pattern = FirstPattern();
         }
+
+        private int FirstPattern() => shields.Count == 0 || Tabards.TabardItem.IsTabard(shields[chosen]) ? 1
+                                    : Shields.ShieldPatches.PatternsOf(shields[chosen])[0];
+
+        private string Key => Shields.Patterns.Key(HeraldTable.ItemBlazonKey, pattern);
 
         public string Title => "Herald's table";
         public string ApplyLabel => "Paint";
@@ -139,7 +146,7 @@ namespace ValheimHeraldryMod.Station
         // (a tabard: its front panel)
         private bool IsTabard => shields.Count > 0 && Tabards.TabardItem.IsTabard(shields[chosen]);
         private Tabards.TabardMesh.Panel Panel => IsTabard ? Tabards.TabardMesh.Front : null;
-        private Shields.ShieldFace Face => shields.Count == 0 || IsTabard ? null : Shields.ShieldPatches.FaceForItem(shields[chosen]);
+        private Shields.ShieldFace Face => shields.Count == 0 || IsTabard ? null : Shields.ShieldPatches.FaceForItem(shields[chosen], pattern);
         public float Aspect => Panel?.Aspect ?? Face?.Aspect ?? 1f;
         public float[] OutlineUV => Panel?.OutlineUV ?? Face?.OutlineUV ?? table.m_displayUV;
         public int[] OutlineTriangles => Panel?.OutlineTriangles ?? Face?.OutlineTriangles ?? table.m_displayTriangles;
@@ -158,6 +165,16 @@ namespace ValheimHeraldryMod.Station
         {
             if (shields.Count == 0) return "";
             chosen = Mathf.Clamp(index, 0, shields.Count - 1);
+            pattern = FirstPattern();
+            return GetText();
+        }
+
+        public IList<int> Patterns => shields.Count == 0 || IsTabard ? null : Shields.ShieldPatches.PatternsOf(shields[chosen]);
+        public int Pattern => pattern;
+
+        public string ChoosePattern(int number)
+        {
+            pattern = number;
             return GetText();
         }
 
@@ -167,7 +184,7 @@ namespace ValheimHeraldryMod.Station
         {
             if (shields.Count == 0) return table.GetDisplayText();
             var data = shields[chosen].m_customData;
-            return data != null && data.TryGetValue(HeraldTable.ItemBlazonKey, out var text) ? text : "";
+            return data != null && data.TryGetValue(Key, out var text) ? text : "";
         }
 
         public string Apply(string text)
@@ -175,12 +192,13 @@ namespace ValheimHeraldryMod.Station
             if (shields.Count == 0) return null;
             var item = shields[chosen];
             if (item.m_customData == null) item.m_customData = new Dictionary<string, string>();
-            if (text.Length == 0) item.m_customData.Remove(HeraldTable.ItemBlazonKey);
-            else item.m_customData[HeraldTable.ItemBlazonKey] = text;
+            if (text.Length == 0) item.m_customData.Remove(Key);
+            else item.m_customData[Key] = text;
             if (text.Length > 0) table.SetDisplayText(text);
             Shields.ShieldPatches.RefreshEquipment(player); // so a shield in hand or on the back shows it at once
             if (Tabards.TabardItem.IsTabard(item)) player.GetComponent<Tabards.HeraldicTabardWearer>()?.Publish();
-            return text.Length == 0 ? $"Paint removed from {Name(item)}." : $"Painted {Name(item)}.";
+            string which = Patterns != null && Patterns.Count > 1 ? $" (pattern {pattern})" : "";
+            return text.Length == 0 ? $"Paint removed from {Name(item)}{which}." : $"Painted {Name(item)}{which}.";
         }
 
         private static string Name(ItemDrop.ItemData item) => Localization.instance.Localize(item.m_shared.m_name);

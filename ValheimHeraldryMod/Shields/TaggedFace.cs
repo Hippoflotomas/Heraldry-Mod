@@ -2,118 +2,106 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using ValheimHeraldryMod.Rendering;
 
 namespace ValheimHeraldryMod.Shields
 {
     /// <summary>
-    ///     A paintable face another modder put on their model (2026-10-13/14, docs/ModderGuide.md):
+    ///     One paintable part another modder tagged on their model (docs/ModderGuide.md):
     ///     <list type="bullet">
-    ///         <item>a mesh object named <c>ValheimHeraldryMod_Face</c> (switched off by its modder; we switch it on
-    ///         once it carries arms), or</item>
-    ///         <item>faces using a material named <c>ValheimHeraldryMod_Face</c> on any mesh (visible as modelled
-    ///         until painted, like the herald's table).</item>
+    ///         <item>a mesh object named <c>ValheimHeraldryMod_Face</c> (switched off by its modder; we switch it on once
+    ///         it carries arms), or</item>
+    ///         <item>the faces of a mesh using a material named <c>ValheimHeraldryMod_Face</c> (visible as modelled until
+    ///         painted).</item>
     ///     </list>
-    ///     An empty named <c>ValheimHeraldryMod_CentrePoint</c> sets the field's centre (lopsided shapes).
-    ///     The face is projected flat here (the modder's UVs are ignored): its triangles are the outline, and a copy
-    ///     of the mesh carries our UVs. Names match exactly, ignoring Unity's " (Instance)"/"(Clone)" suffixes.
+    ///     Up to four patterns (Hippo, 2026-10-16): <c>ValheimHeraldryMod_Face_1</c> … <c>_4</c>, unnumbered = 1. Every part
+    ///     with the same number shows the same arms, each laid out on its own shape (a full copy per part). Centre points
+    ///     follow the same numbering. An object named <c>ValheimHeraldryMod_UseUVs</c> anywhere in the model switches every
+    ///     tagged part to the modder's own UVs (0–1 per part); without it, every part is projected flat.
     /// </summary>
     internal sealed class TaggedFace
     {
         public const string FaceTag = "ValheimHeraldryMod_Face";
         public const string CentreTag = "ValheimHeraldryMod_CentrePoint";
+        public const string UseUVsTag = "ValheimHeraldryMod_UseUVs";
+        public const int MaxPatterns = 4;
 
+        /// <summary>Which pattern (1–4) this part shows.</summary>
+        public int Number = 1;
         /// <summary>-1: the whole object is the face. Else the material slot (submesh) that is.</summary>
         public int Slot;
-        /// <summary>The mesh to show when painted: the face with our UVs (object tag), or the whole mesh with the face's
-        /// triangles moved onto copies of their vertices carrying our UVs (material tag).</summary>
-        public Mesh PaintedMesh;
+        /// <summary>Laid out in the modder's own UVs rather than projected.</summary>
+        public bool FromUVs;
         public float[] OutlineUV;
         public int[] OutlineTriangles;
+        /// <summary>Width over height of the field as it really is on the model.</summary>
         public float Aspect;
         public float CentreU = -1f, CentreV = -1f;
         public string Key;
         public string Note;
+        /// <summary>Position on the mesh → our UVs (projected parts only).</summary>
+        internal Func<Vector3, Vector2> Project;
+        internal int[] Triangles;
 
-        private static readonly Dictionary<string, bool> TaggedPrefabs = new Dictionary<string, bool>();
-        private static readonly Dictionary<string, TaggedFace> Prepared = new Dictionary<string, TaggedFace>();
+        // ================================================================== names
 
-        /// <summary>Name without Unity's runtime suffixes.</summary>
-        private static string Clean(string name)
+        /// <summary>Name without Unity's runtime suffixes (" (Instance)", "(Clone)") and Blender's ".001".</summary>
+        internal static string Clean(string name)
         {
             if (name == null) return "";
             string s = name.Trim();
-            foreach (var suffix in new[] { " (Instance)", "(Clone)" })
-                while (s.EndsWith(suffix, StringComparison.Ordinal)) s = s.Substring(0, s.Length - suffix.Length).TrimEnd();
+            bool again = true;
+            while (again)
+            {
+                again = false;
+                foreach (var suffix in new[] { " (Instance)", "(Clone)" })
+                    if (s.EndsWith(suffix, StringComparison.Ordinal)) { s = s.Substring(0, s.Length - suffix.Length).TrimEnd(); again = true; }
+                int dot = s.LastIndexOf('.');
+                if (dot > 0 && dot < s.Length - 1 && s.Substring(dot + 1).All(char.IsDigit)) { s = s.Substring(0, dot); again = true; }
+            }
             return s;
         }
 
-        /// <summary>The tagged face on this object or its children, if any.</summary>
-        public static bool Find(GameObject root, out MeshRenderer renderer, out int slot)
+        private static readonly HashSet<string> Warned = new HashSet<string>();
+
+        /// <summary>
+        ///     The pattern number a (cleaned) name gives for this tag: the tag alone = 1, the tag + "_" + 1–4 = that
+        ///     number, anything else = 0. A number outside 1–4 is ignored with a warning, once.
+        /// </summary>
+        internal static int NumberOf(string cleaned, string tag)
         {
-            renderer = null;
-            slot = -1;
-            if (root == null) return false;
-            foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
-            {
-                if (r.GetComponent<MeshFilter>() == null) continue;
-                if (Clean(r.gameObject.name) == FaceTag) { renderer = r; slot = -1; return true; }
-                var mats = r.sharedMaterials;
-                for (int i = 0; i < mats.Length; i++)
-                    if (mats[i] != null && Clean(mats[i].name) == FaceTag) { renderer = r; slot = i; return true; }
-            }
-            return false;
+            if (cleaned == tag) return 1;
+            if (!cleaned.StartsWith(tag + "_", StringComparison.Ordinal)) return 0;
+            string rest = cleaned.Substring(tag.Length + 1);
+            if (rest.Length == 0 || !rest.All(char.IsDigit)) return 0;
+            int n = rest.Length > 3 ? 0 : int.Parse(rest);
+            if (n >= 1 && n <= MaxPatterns) return n;
+            if (Warned.Add(cleaned))
+                Jotunn.Logger.LogWarning($"[Heraldry] '{cleaned}': only {tag}_1 to _{MaxPatterns} are used; this one is ignored.");
+            return 0;
         }
 
-        /// <summary>True if this prefab carries a tagged face (looked up once per prefab).</summary>
-        public static bool HasTag(GameObject prefab)
-        {
-            if (prefab == null) return false;
-            if (TaggedPrefabs.TryGetValue(prefab.name, out bool has)) return has;
-            has = Find(prefab, out _, out _);
-            TaggedPrefabs[prefab.name] = has;
-            if (has) Jotunn.Logger.LogDebug($"[Heraldry] '{prefab.name}' has a tagged heraldry face.");
-            return has;
-        }
+        // ================================================================== building one part
 
-        /// <summary>The prepared face for this object (built once per mesh and slot), or null if it has none.</summary>
-        public static TaggedFace For(GameObject root, out MeshRenderer renderer)
+        /// <summary>A part projected flat: its normals averaged, the model's up as up.</summary>
+        internal static TaggedFace Projected(MeshSnapshot snap, int[] tris, int number, int slot, Vector3? centreLocal)
         {
-            if (!Find(root, out renderer, out int slot)) return null;
-            var mesh = renderer.GetComponent<MeshFilter>().sharedMesh;
-            if (mesh == null) return null;
-            string key = mesh.name + "|" + mesh.GetInstanceID() + "|" + slot;
-            if (Prepared.TryGetValue(key, out var face)) return face;
-            try
-            {
-                face = Build(mesh, slot, renderer.transform, root);
-                face.Key = key;
-                Jotunn.Logger.LogInfo($"[Heraldry] Tagged face on '{Clean(root.name)}': {face.Note}");
-            }
-            catch (Exception ex)
-            {
-                Jotunn.Logger.LogWarning($"[Heraldry] Tagged face on '{Clean(root.name)}' can't be used: {ex.Message}");
-                face = null;
-            }
-            Prepared[key] = face;
-            return face;
-        }
-
-        private static TaggedFace Build(Mesh mesh, int slot, Transform faceTransform, GameObject root)
-        {
-            var snap = MeshReader.Read(mesh);
-            var tris = slot < 0 ? snap.SubMeshTriangles.SelectMany(t => t).ToArray()
-                     : slot < snap.SubMeshTriangles.Count ? snap.SubMeshTriangles[slot] : new int[0];
-            if (tris.Length < 3) throw new InvalidOperationException("the tagged face has no triangles");
             var used = tris.Distinct().ToArray();
-
-            // The way the face looks: its normals (or windings) averaged
+            // Which way the face looks: its normals averaged by area. How much they agree says how curved it is.
             var normal = Vector3.zero;
-            if (snap.Normals != null && snap.Normals.Length == snap.Vertices.Length)
-                foreach (int i in used) normal += snap.Normals[i];
-            else
-                for (int t = 0; t + 2 < tris.Length; t += 3)
-                    normal += Vector3.Cross(snap.Vertices[tris[t + 1]] - snap.Vertices[tris[t]], snap.Vertices[tris[t + 2]] - snap.Vertices[tris[t]]);
-            if (normal.sqrMagnitude < 1e-12f) throw new InvalidOperationException("can't tell which way the face looks");
+            float total = 0f;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                var n = Vector3.Cross(snap.Vertices[tris[t + 1]] - snap.Vertices[tris[t]], snap.Vertices[tris[t + 2]] - snap.Vertices[tris[t]]);
+                if (snap.Normals != null && snap.Normals.Length == snap.Vertices.Length &&
+                    Vector3.Dot(n, snap.Normals[tris[t]] + snap.Normals[tris[t + 1]] + snap.Normals[tris[t + 2]]) < 0) n = -n; // winding against the normals
+                normal += n;
+                total += n.magnitude;
+            }
+            float agreement = total > 0 ? normal.magnitude / total : 0f;
+            if (agreement < 0.1f)
+                throw new InvalidOperationException("it wraps around (its sides face opposite ways), so it can't be projected flat; " +
+                                                    "add ValheimHeraldryMod_UseUVs and unwrap it 0–1");
             normal.Normalize();
 
             // Up: the model's up, flattened onto the face (a face lying flat: its forward)
@@ -140,108 +128,128 @@ namespace ValheimHeraldryMod.Shields
                 return new Vector2((Vector3.Dot(d, right) - minU) / rangeU, (Vector3.Dot(d, up) - minV) / rangeV);
             }
 
-            var face = new TaggedFace { Slot = slot, Aspect = rangeU / rangeV };
-
-            // Outline: the face's own triangles, flat
-            var outlineUV = new List<float>();
-            var outlineTris = new List<int>();
+            var face = new TaggedFace { Number = number, Slot = slot, Aspect = rangeU / rangeV, Project = P, Triangles = tris };
+            // Agreement 0.7 ≈ the sides turned ~45° away: the projection stretches them noticeably
+            if (agreement < 0.7f) face.Note = $"it curves a lot (normals agree {agreement:P0}): the sides will look stretched; ValheimHeraldryMod_UseUVs fixes that";
+            var outlineUV = new float[tris.Length * 2];
+            var outlineTris = new int[tris.Length];
             for (int t = 0; t < tris.Length; t++)
             {
                 var p = P(snap.Vertices[tris[t]]);
-                outlineTris.Add(outlineUV.Count / 2);
-                outlineUV.Add(p.x); outlineUV.Add(p.y);
+                outlineTris[t] = t;
+                outlineUV[t * 2] = p.x; outlineUV[t * 2 + 1] = p.y;
             }
-            face.OutlineUV = outlineUV.ToArray();
-            face.OutlineTriangles = outlineTris.ToArray();
+            face.OutlineUV = outlineUV;
+            face.OutlineTriangles = outlineTris;
 
-            // Centre point: the tagged empty, seen from the front
-            var centreMark = root.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => Clean(t.name) == CentreTag);
-            if (centreMark != null)
+            if (centreLocal.HasValue)
             {
-                var local = faceTransform.InverseTransformPoint(centreMark.position);
-                var c = P(local);
+                var c = P(centreLocal.Value);
                 face.CentreU = Mathf.Clamp01(c.x);
                 face.CentreV = Mathf.Clamp01(1f - c.y); // the renderer counts from the top
             }
-
-            face.PaintedMesh = slot < 0 ? FaceOnly(snap, tris, P) : WithFaceCopied(snap, slot, P);
-            face.PaintedMesh.name = mesh.name + "_heraldry";
-            face.Note = $"{tris.Length / 3} triangles, aspect {face.Aspect:F2}, tagged by {(slot < 0 ? "object name" : "material (slot " + slot + ")")}" +
-                        (centreMark != null ? $", centre point at {face.CentreU:F2},{face.CentreV:F2}" : "") +
-                        (snap.FromGpu ? ", mesh read from the GPU" : "") + ".";
             return face;
         }
 
-        /// <summary>The face alone, with flat UVs (object tag: the whole object is the face).</summary>
-        private static Mesh FaceOnly(MeshSnapshot snap, int[] tris, Func<Vector3, Vector2> P)
+        /// <summary>A part laid out in the modder's own UV0 (0–1 across its field, +V up).</summary>
+        internal static TaggedFace FromModUVs(MeshSnapshot snap, int[] tris, int number, int slot, Vector3? centreLocal)
         {
-            var map = new Dictionary<int, int>();
-            var verts = new List<Vector3>();
-            var norms = new List<Vector3>();
-            var uvs = new List<Vector2>();
-            var idx = new int[tris.Length];
-            bool haveNormals = snap.Normals != null && snap.Normals.Length == snap.Vertices.Length;
+            if (snap.Uvs == null || snap.Uvs.Length != snap.Vertices.Length)
+                throw new InvalidOperationException("ValheimHeraldryMod_UseUVs is set but the mesh has no UVs");
+            var face = new TaggedFace { Number = number, Slot = slot, FromUVs = true, Triangles = tris };
+            var outlineUV = new float[tris.Length * 2];
+            var outlineTris = new int[tris.Length];
+            int outside = 0;
             for (int t = 0; t < tris.Length; t++)
             {
-                int i = tris[t];
-                if (!map.TryGetValue(i, out int j))
-                {
-                    j = verts.Count;
-                    map[i] = j;
-                    verts.Add(snap.Vertices[i]);
-                    if (haveNormals) norms.Add(snap.Normals[i]);
-                    uvs.Add(P(snap.Vertices[i]));
-                }
-                idx[t] = j;
+                var uv = snap.Uvs[tris[t]];
+                if (uv.x < -0.01f || uv.x > 1.01f || uv.y < -0.01f || uv.y > 1.01f) outside++;
+                outlineTris[t] = t;
+                outlineUV[t * 2] = uv.x; outlineUV[t * 2 + 1] = uv.y;
             }
-            var m = new Mesh { indexFormat = verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16 };
-            m.SetVertices(verts);
-            if (haveNormals) m.SetNormals(norms);
-            m.SetUVs(0, uvs);
-            m.SetTriangles(idx, 0);
-            if (!haveNormals) m.RecalculateNormals();
-            m.RecalculateBounds();
-            m.RecalculateTangents();
-            return m;
+            face.OutlineUV = outlineUV;
+            face.OutlineTriangles = outlineTris;
+
+            // The field's real proportions: how long one unit of U and of V is on the model, averaged by area
+            double su = 0, sv = 0, weight = 0;
+            int mirrored = 0;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                Vector3 p0 = snap.Vertices[tris[t]], p1 = snap.Vertices[tris[t + 1]], p2 = snap.Vertices[tris[t + 2]];
+                Vector2 a = snap.Uvs[tris[t]], b = snap.Uvs[tris[t + 1]], c = snap.Uvs[tris[t + 2]];
+                Vector3 e1 = p1 - p0, e2 = p2 - p0;
+                float du1 = b.x - a.x, dv1 = b.y - a.y, du2 = c.x - a.x, dv2 = c.y - a.y;
+                float det = du1 * dv2 - du2 * dv1;
+                if (Mathf.Abs(det) < 1e-10f) continue;
+                var dPdu = (e1 * dv2 - e2 * dv1) / det;
+                var dPdv = (e2 * du1 - e1 * du2) / det;
+                double w = Mathf.Abs(det) * 0.5;
+                su += w * dPdu.magnitude;
+                sv += w * dPdv.magnitude;
+                weight += w;
+                // Seen from the front, U must run to the viewer's right (normal × V, as the projection does; Unity is
+                // left-handed), i.e. normal · (dP/du × dP/dv) < 0. The other way round the arms read backwards.
+                var n = snap.Normals != null && snap.Normals.Length == snap.Vertices.Length ? snap.Normals[tris[t]] : Vector3.Cross(e1, e2);
+                if (Vector3.Dot(Vector3.Cross(dPdu, dPdv), n) > 0) mirrored++;
+            }
+            if (weight <= 0 || sv <= 0) throw new InvalidOperationException("the face's UVs have no area");
+            face.Aspect = (float)(su / sv);
+
+            if (centreLocal.HasValue)
+            {
+                var uv = UvAtNearest(snap, tris, centreLocal.Value);
+                face.CentreU = Mathf.Clamp01(uv.x);
+                face.CentreV = Mathf.Clamp01(1f - uv.y);
+            }
+            if (outside > 0) face.Note = $"{outside} of its UVs lie outside 0–1 (they're cut off)";
+            if (mirrored > tris.Length / 6) face.Note = (face.Note == null ? "" : face.Note + "; ") + "its UVs look mirrored (arms will read backwards)";
+            return face;
         }
 
-        /// <summary>
-        ///     The whole mesh again, but the tagged slot's triangles use copies of their vertices with flat UVs
-        ///     (material tag: the face is part of a bigger mesh whose other parts keep their own UVs).
-        /// </summary>
-        private static Mesh WithFaceCopied(MeshSnapshot snap, int slot, Func<Vector3, Vector2> P)
+        /// <summary>The UV at the point of the face nearest to <paramref name="p"/>.</summary>
+        private static Vector2 UvAtNearest(MeshSnapshot snap, int[] tris, Vector3 p)
         {
-            bool haveNormals = snap.Normals != null && snap.Normals.Length == snap.Vertices.Length;
-            var verts = new List<Vector3>(snap.Vertices);
-            var norms = haveNormals ? new List<Vector3>(snap.Normals) : null;
-            var uvs = new List<Vector2>(snap.Uvs != null && snap.Uvs.Length == snap.Vertices.Length ? snap.Uvs : new Vector2[snap.Vertices.Length]);
-            var map = new Dictionary<int, int>();
-            var faceTris = snap.SubMeshTriangles[slot];
-            var newFace = new int[faceTris.Length];
-            for (int t = 0; t < faceTris.Length; t++)
+            float best = float.MaxValue;
+            Vector2 result = new Vector2(0.5f, 0.5f);
+            for (int t = 0; t + 2 < tris.Length; t += 3)
             {
-                int i = faceTris[t];
-                if (!map.TryGetValue(i, out int j))
-                {
-                    j = verts.Count;
-                    map[i] = j;
-                    verts.Add(snap.Vertices[i]);
-                    if (haveNormals) norms.Add(snap.Normals[i]);
-                    uvs.Add(P(snap.Vertices[i]));
-                }
-                newFace[t] = j;
+                Vector3 a = snap.Vertices[tris[t]], b = snap.Vertices[tris[t + 1]], c = snap.Vertices[tris[t + 2]];
+                var q = ClosestOnTriangle(p, a, b, c, out float wa, out float wb, out float wc);
+                float d = (q - p).sqrMagnitude;
+                if (d >= best) continue;
+                best = d;
+                result = snap.Uvs[tris[t]] * wa + snap.Uvs[tris[t + 1]] * wb + snap.Uvs[tris[t + 2]] * wc;
             }
-            var m = new Mesh { indexFormat = verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16 };
-            m.SetVertices(verts);
-            if (haveNormals) m.SetNormals(norms);
-            m.SetUVs(0, uvs);
-            m.subMeshCount = snap.SubMeshTriangles.Count;
-            for (int s = 0; s < snap.SubMeshTriangles.Count; s++)
-                m.SetTriangles(s == slot ? newFace : snap.SubMeshTriangles[s], s);
-            if (!haveNormals) m.RecalculateNormals();
-            m.RecalculateBounds();
-            m.RecalculateTangents();
-            return m;
+            return result;
+        }
+
+        /// <summary>Closest point on a triangle, with its barycentric weights (Ericson, Real-Time Collision Detection 5.1.5).</summary>
+        private static Vector3 ClosestOnTriangle(Vector3 p, Vector3 a, Vector3 b, Vector3 c, out float wa, out float wb, out float wc)
+        {
+            Vector3 ab = b - a, ac = c - a, ap = p - a;
+            float d1 = Vector3.Dot(ab, ap), d2 = Vector3.Dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) { wa = 1; wb = 0; wc = 0; return a; }
+            Vector3 bp = p - b;
+            float d3 = Vector3.Dot(ab, bp), d4 = Vector3.Dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) { wa = 0; wb = 1; wc = 0; return b; }
+            float vc = d1 * d4 - d3 * d2;
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) { float v = d1 / (d1 - d3); wa = 1 - v; wb = v; wc = 0; return a + v * ab; }
+            Vector3 cp = p - c;
+            float d5 = Vector3.Dot(ab, cp), d6 = Vector3.Dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) { wa = 0; wb = 0; wc = 1; return c; }
+            float vb = d5 * d2 - d1 * d6;
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) { float w = d2 / (d2 - d6); wa = 1 - w; wb = 0; wc = w; return a + w * ac; }
+            float va = d3 * d6 - d5 * d4;
+            if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0)
+            {
+                float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                wa = 0; wb = 1 - w; wc = w;
+                return b + w * (c - b);
+            }
+            float denom = 1f / (va + vb + vc);
+            float vv = vb * denom, ww = vc * denom;
+            wa = 1 - vv - ww; wb = vv; wc = ww;
+            return a + ab * vv + ac * ww;
         }
 
         // ================================================================== painting an instance
@@ -269,77 +277,418 @@ namespace ValheimHeraldryMod.Shields
     }
 
     /// <summary>
-    ///     Shows arms on one instance's tagged face (a shield in a hand, on a stand, on the ground; a piece).
-    ///     Remembers what the face looked like so it can be put back when the arms are taken off.
+    ///     The tagged parts on one mesh, prepared once per mesh: their layouts, and the meshes to show while some of
+    ///     them are painted (projected parts need their own UVs; with UseUVs the mesh never changes).
+    /// </summary>
+    internal sealed class TaggedMesh
+    {
+        public Mesh Source;
+        public bool UseUVs;
+        public readonly List<TaggedFace> Faces = new List<TaggedFace>();
+        private MeshSnapshot snap;
+        private readonly Dictionary<int, Mesh> variants = new Dictionary<int, Mesh>();
+
+        private static readonly Dictionary<string, TaggedMesh> Cache = new Dictionary<string, TaggedMesh>();
+
+        /// <summary>
+        ///     The parts of this renderer's mesh named in <paramref name="hits"/> (slot → number), or null if the mesh can't be
+        ///     used (logged once).
+        /// </summary>
+        public static TaggedMesh For(MeshRenderer renderer, List<KeyValuePair<int, int>> hits, bool useUVs,
+            Func<int, Transform> centreFor, string owner)
+        {
+            var mesh = renderer.GetComponent<MeshFilter>()?.sharedMesh;
+            if (mesh == null) return null;
+            string key = owner + "|" + mesh.name + "|" + mesh.GetInstanceID() + "|" + (useUVs ? "uv" : "proj") + "|" +
+                         string.Join(",", hits.Select(h => h.Key + ":" + h.Value));
+            if (Cache.TryGetValue(key, out var tm)) return tm;
+            try
+            {
+                tm = new TaggedMesh { Source = mesh, UseUVs = useUVs, snap = MeshReader.Read(mesh) };
+                foreach (var hit in hits)
+                {
+                    int slot = hit.Key, number = hit.Value;
+                    var tris = slot < 0 ? tm.snap.SubMeshTriangles.SelectMany(t => t).ToArray()
+                             : slot < tm.snap.SubMeshTriangles.Count ? tm.snap.SubMeshTriangles[slot] : new int[0];
+                    string where = slot < 0 ? $"object '{TaggedFace.Clean(renderer.name)}'" : $"'{TaggedFace.Clean(renderer.name)}' material slot {slot}";
+                    if (tris.Length < 3)
+                    {
+                        Jotunn.Logger.LogWarning($"[Heraldry] Tagged face on '{owner}' ({where}) has no triangles; skipped.");
+                        continue;
+                    }
+                    var mark = centreFor(number);
+                    Vector3? centre = mark != null ? renderer.transform.InverseTransformPoint(mark.position) : (Vector3?)null;
+                    TaggedFace face;
+                    try
+                    {
+                        face = useUVs ? TaggedFace.FromModUVs(tm.snap, tris, number, slot, centre)
+                                      : TaggedFace.Projected(tm.snap, tris, number, slot, centre);
+                    }
+                    catch (Exception ex)
+                    {
+                        Jotunn.Logger.LogWarning($"[Heraldry] Tagged face on '{owner}' ({where}) can't be used: {ex.Message}");
+                        continue;
+                    }
+                    face.Key = key + "|" + slot;
+                    string extra = face.Note;
+                    face.Note = $"pattern {number}, {where}, {tris.Length / 3} triangles, aspect {face.Aspect:F2}, " +
+                                (useUVs ? "modder's UVs" : "projected flat") +
+                                (mark != null ? $", centre point at {face.CentreU:F2},{face.CentreV:F2}" : "") +
+                                (tm.snap.FromGpu ? ", mesh read from the GPU" : "") + (extra != null ? "; " + extra : "");
+                    tm.Faces.Add(face);
+                    Jotunn.Logger.LogInfo($"[Heraldry] Tagged face on '{owner}': {face.Note}.");
+                }
+                if (tm.Faces.Count == 0) tm = null;
+            }
+            catch (Exception ex)
+            {
+                Jotunn.Logger.LogWarning($"[Heraldry] Tagged faces on '{owner}' can't be read: {ex.Message}");
+                tm = null;
+            }
+            Cache[key] = tm;
+            return tm;
+        }
+
+        /// <summary>The mesh to show with these faces painted (bit i = Faces[i]).</summary>
+        public Mesh MeshFor(int painted)
+        {
+            if (painted == 0 || UseUVs) return Source;
+            if (variants.TryGetValue(painted, out var m)) return m;
+            var whole = Faces.FirstOrDefault(f => f.Slot < 0);
+            m = whole != null ? FaceOnly(whole) : WithFacesCopied(painted);
+            m.name = Source.name + "_heraldry" + painted;
+            variants[painted] = m;
+            return m;
+        }
+
+        private bool HaveNormals => snap.Normals != null && snap.Normals.Length == snap.Vertices.Length;
+
+        /// <summary>The face alone, with flat UVs (object tag: the whole object is the face).</summary>
+        private Mesh FaceOnly(TaggedFace face)
+        {
+            var map = new Dictionary<int, int>();
+            var verts = new List<Vector3>();
+            var norms = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var tris = face.Triangles;
+            var idx = new int[tris.Length];
+            for (int t = 0; t < tris.Length; t++)
+            {
+                int i = tris[t];
+                if (!map.TryGetValue(i, out int j))
+                {
+                    j = verts.Count;
+                    map[i] = j;
+                    verts.Add(snap.Vertices[i]);
+                    if (HaveNormals) norms.Add(snap.Normals[i]);
+                    uvs.Add(face.Project(snap.Vertices[i]));
+                }
+                idx[t] = j;
+            }
+            var m = new Mesh { indexFormat = verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16 };
+            m.SetVertices(verts);
+            if (HaveNormals) m.SetNormals(norms);
+            m.SetUVs(0, uvs);
+            m.SetTriangles(idx, 0);
+            if (!HaveNormals) m.RecalculateNormals();
+            m.RecalculateBounds();
+            m.RecalculateTangents();
+            return m;
+        }
+
+        /// <summary>
+        ///     The whole mesh again, with the painted slots' triangles on copies of their vertices carrying our UVs (the
+        ///     rest, including tagged slots not painted now, keep the modder's own UVs).
+        /// </summary>
+        private Mesh WithFacesCopied(int painted)
+        {
+            var verts = new List<Vector3>(snap.Vertices);
+            var norms = HaveNormals ? new List<Vector3>(snap.Normals) : null;
+            var uvs = new List<Vector2>(snap.Uvs != null && snap.Uvs.Length == snap.Vertices.Length ? snap.Uvs : new Vector2[snap.Vertices.Length]);
+            var subs = snap.SubMeshTriangles.Select(t => t).ToList();
+            for (int f = 0; f < Faces.Count; f++)
+            {
+                if ((painted & (1 << f)) == 0) continue;
+                var face = Faces[f];
+                var map = new Dictionary<int, int>();
+                var old = snap.SubMeshTriangles[face.Slot];
+                var copy = new int[old.Length];
+                for (int t = 0; t < old.Length; t++)
+                {
+                    int i = old[t];
+                    if (!map.TryGetValue(i, out int j))
+                    {
+                        j = verts.Count;
+                        map[i] = j;
+                        verts.Add(snap.Vertices[i]);
+                        if (HaveNormals) norms.Add(snap.Normals[i]);
+                        uvs.Add(face.Project(snap.Vertices[i]));
+                    }
+                    copy[t] = j;
+                }
+                subs[face.Slot] = copy;
+            }
+            var m = new Mesh { indexFormat = verts.Count > 65000 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16 };
+            m.SetVertices(verts);
+            if (HaveNormals) m.SetNormals(norms);
+            m.SetUVs(0, uvs);
+            m.subMeshCount = subs.Count;
+            for (int s = 0; s < subs.Count; s++) m.SetTriangles(subs[s], s);
+            if (!HaveNormals) m.RecalculateNormals();
+            m.RecalculateBounds();
+            m.RecalculateTangents();
+            return m;
+        }
+    }
+
+    /// <summary>Every tagged part of one model (an instance, or a prefab for previews and icons).</summary>
+    internal sealed class TaggedModel
+    {
+        public readonly List<KeyValuePair<MeshRenderer, TaggedMesh>> Renderers = new List<KeyValuePair<MeshRenderer, TaggedMesh>>();
+        public bool UseUVs;
+
+        public IEnumerable<TaggedFace> Faces => Renderers.SelectMany(r => r.Value.Faces);
+
+        /// <summary>The pattern numbers present, lowest first.</summary>
+        public int[] Numbers => Faces.Select(f => f.Number).Distinct().OrderBy(n => n).ToArray();
+
+        /// <summary>The first part showing this pattern (its shape is used for previews), or null.</summary>
+        public TaggedFace First(int number) => Faces.FirstOrDefault(f => f.Number == number);
+
+        /// <summary>Pattern 1, or the lowest the model has (inventory icons).</summary>
+        public int IconPattern
+        {
+            get { var n = Numbers; return n.Length == 0 || n.Contains(1) ? 1 : n[0]; }
+        }
+
+        /// <summary>The tags on this object and its children: (renderer, slot or -1, pattern number).</summary>
+        public static List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>> Scan(GameObject root, out bool useUVs)
+        {
+            var hits = new List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>>();
+            useUVs = false;
+            if (root == null) return hits;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                if (TaggedFace.Clean(t.name) == TaggedFace.UseUVsTag) { useUVs = true; break; }
+            foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (r.GetComponent<MeshFilter>() == null) continue;
+                int n = TaggedFace.NumberOf(TaggedFace.Clean(r.gameObject.name), TaggedFace.FaceTag);
+                if (n > 0) { hits.Add(new KeyValuePair<MeshRenderer, KeyValuePair<int, int>>(r, new KeyValuePair<int, int>(-1, n))); continue; }
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null) continue;
+                    n = TaggedFace.NumberOf(TaggedFace.Clean(mats[i].name), TaggedFace.FaceTag);
+                    if (n > 0) hits.Add(new KeyValuePair<MeshRenderer, KeyValuePair<int, int>>(r, new KeyValuePair<int, int>(i, n)));
+                }
+            }
+            return hits;
+        }
+
+        /// <summary>This object's tagged parts, prepared (meshes cached), or null if it has none.</summary>
+        public static TaggedModel For(GameObject root)
+        {
+            var hits = Scan(root, out bool useUVs);
+            if (hits.Count == 0) return null;
+            string owner = Utils.GetPrefabName(root);
+            var marks = root.GetComponentsInChildren<Transform>(true)
+                .Select(t => new KeyValuePair<int, Transform>(TaggedFace.NumberOf(TaggedFace.Clean(t.name), TaggedFace.CentreTag), t))
+                .Where(kv => kv.Key > 0).ToList();
+            Transform CentreFor(int n) => marks.FirstOrDefault(kv => kv.Key == n).Value;
+
+            var model = new TaggedModel { UseUVs = useUVs };
+            foreach (var group in hits.GroupBy(h => h.Key))
+            {
+                var tm = TaggedMesh.For(group.Key, group.Select(h => h.Value).ToList(), useUVs, CentreFor, owner);
+                if (tm != null) model.Renderers.Add(new KeyValuePair<MeshRenderer, TaggedMesh>(group.Key, tm));
+            }
+            return model.Renderers.Count > 0 ? model : null;
+        }
+
+        private static readonly Dictionary<string, TaggedModel> Prefabs = new Dictionary<string, TaggedModel>();
+        private static readonly Dictionary<string, bool> Tagged = new Dictionary<string, bool>();
+
+        /// <summary>A prefab's tagged parts (cached per prefab name), for previews and icons; null if none.</summary>
+        public static TaggedModel ForPrefab(GameObject prefab)
+        {
+            if (prefab == null) return null;
+            if (Prefabs.TryGetValue(prefab.name, out var m)) return m;
+            m = For(prefab);
+            Prefabs[prefab.name] = m;
+            return m;
+        }
+
+        /// <summary>True if this prefab carries a tagged face (scanned once per prefab, nothing built).</summary>
+        public static bool HasTag(GameObject prefab)
+        {
+            if (prefab == null) return false;
+            if (Tagged.TryGetValue(prefab.name, out bool has)) return has;
+            has = Scan(prefab, out _).Count > 0;
+            Tagged[prefab.name] = has;
+            if (has) Jotunn.Logger.LogDebug($"[Heraldry] '{prefab.name}' has a tagged heraldry face.");
+            return has;
+        }
+    }
+
+    /// <summary>
+    ///     Shows arms on one instance's tagged parts (a shield in a hand, on a stand, on the ground; a piece). Each part
+    ///     gets its own texture, drawn in its own outline; parts sharing a number show the same blazon. Remembers what
+    ///     every renderer looked like so it can be put back when the arms are taken off.
     /// </summary>
     internal sealed class TaggedFacePainter
     {
-        private readonly MeshRenderer renderer;
-        private readonly MeshFilter filter;
-        private readonly TaggedFace face;
-        private readonly Mesh originalMesh;
-        private readonly Material[] originalMaterials;
-        private readonly bool originalEnabled, originalActive;
-        private Material painted;
-        private bool applied;
-
-        private TaggedFacePainter(MeshRenderer r, TaggedFace f)
+        private sealed class RendererState
         {
-            renderer = r;
-            filter = r.GetComponent<MeshFilter>();
-            face = f;
-            originalMesh = filter.sharedMesh;
-            originalMaterials = r.sharedMaterials;
-            originalEnabled = r.enabled;
-            originalActive = r.gameObject.activeSelf;
+            public MeshRenderer Renderer;
+            public MeshFilter Filter;
+            public TaggedMesh Mesh;
+            public Mesh OriginalMesh;
+            public Material[] OriginalMaterials;
+            public bool OriginalEnabled, OriginalActive;
+            public Material[] Painted; // per face
+            public string[] TextKeys;  // per face: what it shows now
+            public string[] CacheKeys; // per face: its texture in BlazonTextureCache
+            public int Shown;          // bit per face
         }
 
-        public TaggedFace Face => face;
+        private readonly List<RendererState> states = new List<RendererState>();
+        public TaggedModel Model { get; private set; }
 
         public static TaggedFacePainter On(GameObject root)
         {
-            var f = TaggedFace.For(root, out var r);
-            return f != null && r != null ? new TaggedFacePainter(r, f) : null;
+            var model = TaggedModel.For(root);
+            if (model == null) return null;
+            var p = new TaggedFacePainter { Model = model };
+            foreach (var kv in model.Renderers)
+            {
+                var r = kv.Key;
+                int n = kv.Value.Faces.Count;
+                p.states.Add(new RendererState
+                {
+                    Renderer = r, Filter = r.GetComponent<MeshFilter>(), Mesh = kv.Value,
+                    OriginalMesh = r.GetComponent<MeshFilter>().sharedMesh, OriginalMaterials = r.sharedMaterials,
+                    OriginalEnabled = r.enabled, OriginalActive = r.gameObject.activeSelf,
+                    Painted = new Material[n], TextKeys = new string[n], CacheKeys = new string[n],
+                });
+            }
+            return p;
         }
 
-        public void Show(Texture arms)
+        /// <summary>
+        ///     Brings every part up to date: <paramref name="textOf"/> gives a pattern's blazon (already normalised, "" for
+        ///     none), <paramref name="longest"/> the texture's longer side, <paramref name="arrangement"/> how a part lays out
+        ///     its charges. Parts whose arms haven't changed are left alone.
+        /// </summary>
+        public void Refresh(Func<int, string> textOf, int longest, Func<TaggedFace, Heraldry.FieldRenderer.Arrangement> arrangement, string shapePrefix)
         {
-            if (renderer == null) return;
-            if (painted == null)
+            var texts = new Dictionary<int, string>();
+            foreach (var s in states)
             {
-                var source = face.Slot >= 0 && face.Slot < originalMaterials.Length ? originalMaterials[face.Slot]
-                           : originalMaterials.FirstOrDefault(m => m != null);
-                painted = TaggedFace.MakeMaterial(source, arms);
+                if (s.Renderer == null) continue;
+                bool changed = false;
+                for (int i = 0; i < s.Mesh.Faces.Count; i++)
+                {
+                    var f = s.Mesh.Faces[i];
+                    if (!texts.TryGetValue(f.Number, out string text))
+                        texts[f.Number] = text = BlazonTextureCache.Normalise(textOf(f.Number) ?? "");
+                    string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text;
+                    if (key == s.TextKeys[i]) continue;
+                    s.TextKeys[i] = key;
+                    changed = true;
+                    BlazonTextureCache.Release(s.CacheKeys[i]);
+                    s.CacheKeys[i] = null;
+                    if (text.Length == 0) { s.Shown &= ~(1 << i); continue; }
+
+                    int w = f.Aspect >= 1f ? longest : Mathf.Max(32, Mathf.RoundToInt(longest * f.Aspect));
+                    int h = f.Aspect >= 1f ? Mathf.Max(32, Mathf.RoundToInt(longest / f.Aspect)) : longest;
+                    var shape = new BlazonTextureCache.Shape
+                    {
+                        Id = shapePrefix + f.Key, UV = f.OutlineUV, Triangles = f.OutlineTriangles,
+                        Arrangement = arrangement(f), CentreU = f.CentreU, CentreV = f.CentreV,
+                    };
+                    var tex = BlazonTextureCache.Acquire(text, w, h, shape, out s.CacheKeys[i]);
+                    if (s.Painted[i] == null)
+                    {
+                        var source = f.Slot >= 0 && f.Slot < s.OriginalMaterials.Length ? s.OriginalMaterials[f.Slot]
+                                   : s.OriginalMaterials.FirstOrDefault(m => m != null);
+                        s.Painted[i] = TaggedFace.MakeMaterial(source, tex);
+                    }
+                    else s.Painted[i].mainTexture = tex;
+                    s.Shown |= 1 << i;
+                }
+                if (changed) Apply(s);
             }
-            else painted.mainTexture = arms;
-            filter.sharedMesh = face.PaintedMesh;
-            if (face.Slot < 0) renderer.sharedMaterials = new[] { painted };
+        }
+
+        private static void Apply(RendererState s)
+        {
+            if (s.Renderer == null) return;
+            if (s.Shown == 0)
+            {
+                s.Filter.sharedMesh = s.OriginalMesh;
+                s.Renderer.sharedMaterials = s.OriginalMaterials;
+                s.Renderer.enabled = s.OriginalEnabled;
+                if (s.Renderer.gameObject.activeSelf != s.OriginalActive) s.Renderer.gameObject.SetActive(s.OriginalActive);
+                return;
+            }
+            var mesh = s.Mesh.MeshFor(s.Shown);
+            s.Filter.sharedMesh = mesh;
+            var whole = s.Mesh.Faces.FindIndex(f => f.Slot < 0);
+            if (whole >= 0)
+            {
+                // The whole object is the face: every submesh it has takes the painted material
+                int count = Mathf.Max(1, mesh.subMeshCount);
+                s.Renderer.sharedMaterials = Enumerable.Repeat(s.Painted[whole], count).ToArray();
+            }
             else
             {
-                var mats = (Material[])originalMaterials.Clone();
-                mats[face.Slot] = painted;
-                renderer.sharedMaterials = mats;
+                var mats = (Material[])s.OriginalMaterials.Clone();
+                for (int i = 0; i < s.Mesh.Faces.Count; i++)
+                    if ((s.Shown & (1 << i)) != 0 && s.Mesh.Faces[i].Slot < mats.Length) mats[s.Mesh.Faces[i].Slot] = s.Painted[i];
+                s.Renderer.sharedMaterials = mats;
             }
-            renderer.enabled = true;
-            if (!renderer.gameObject.activeSelf) renderer.gameObject.SetActive(true); // switched off as an object rather than a renderer
-            applied = true;
+            s.Renderer.enabled = true;
+            if (!s.Renderer.gameObject.activeSelf) s.Renderer.gameObject.SetActive(true); // switched off as an object rather than a renderer
         }
 
-        public void Hide()
+        /// <summary>Takes all arms off (as modelled again) and lets go of the textures.</summary>
+        public void Clear()
         {
-            if (!applied || renderer == null) return;
-            filter.sharedMesh = originalMesh;
-            renderer.sharedMaterials = originalMaterials;
-            renderer.enabled = originalEnabled;
-            if (renderer.gameObject.activeSelf != originalActive) renderer.gameObject.SetActive(originalActive);
-            applied = false;
+            foreach (var s in states)
+            {
+                for (int i = 0; i < s.CacheKeys.Length; i++)
+                {
+                    BlazonTextureCache.Release(s.CacheKeys[i]);
+                    s.CacheKeys[i] = null;
+                    s.TextKeys[i] = null;
+                }
+                s.Shown = 0;
+                Apply(s);
+            }
         }
 
         public void Destroy()
         {
-            Hide();
-            if (painted != null) UnityEngine.Object.Destroy(painted);
-            painted = null;
+            Clear();
+            foreach (var s in states)
+                for (int i = 0; i < s.Painted.Length; i++)
+                {
+                    if (s.Painted[i] != null) UnityEngine.Object.Destroy(s.Painted[i]);
+                    s.Painted[i] = null;
+                }
+        }
+    }
+
+    /// <summary>Where each pattern is stored: pattern 1 keeps the old key, 2–4 add their number (2026-10-16).</summary>
+    internal static class Patterns
+    {
+        public static string Key(string baseKey, int number) => number <= 1 ? baseKey : baseKey + number;
+
+        public static string Label(int number) => "Pattern " + number;
+
+        public static IEnumerable<int> All
+        {
+            get { for (int n = 1; n <= TaggedFace.MaxPatterns; n++) yield return n; }
         }
     }
 }

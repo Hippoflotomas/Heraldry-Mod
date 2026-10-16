@@ -15,7 +15,7 @@ namespace ValheimHeraldryMod.Shields
     internal class HeraldicShield : MonoBehaviour
     {
         private string prefabName;
-        private Func<string> source;
+        private Func<int, string> source;
         private string current;
         private float nextCheck;
 
@@ -24,25 +24,33 @@ namespace ValheimHeraldryMod.Shields
         private ShieldTextures.Entry entry;
         private bool applied;
 
-        // Another modder's tagged face: the arms go on the face itself
+        // Another modder's tagged faces: the arms go on the faces themselves (up to four patterns)
         private bool taggedChecked;
         private TaggedFacePainter tagged;
-        private string taggedKey;
 
-        /// <summary>Starts (or retargets) painting on this model. <paramref name="source"/> returns the blazon or "".</summary>
-        public static void Attach(GameObject root, string prefabName, Func<string> source)
+        /// <summary>
+        ///     Starts (or retargets) painting on this model. <paramref name="source"/> returns a pattern's blazon (1–4)
+        ///     or ""; vanilla shields only ever ask for pattern 1.
+        /// </summary>
+        public static void Attach(GameObject root, string prefabName, Func<int, string> source)
         {
             if (root == null || string.IsNullOrEmpty(prefabName)) return;
             var s = root.GetComponent<HeraldicShield>() ?? root.AddComponent<HeraldicShield>();
-            if (s.prefabName != prefabName) s.current = null; // force a redraw
+            if (s.prefabName != prefabName)
+            {
+                s.current = null; // force a redraw
+                s.tagged?.Destroy();
+                s.tagged = null;
+                s.taggedChecked = false;
+            }
             s.prefabName = prefabName;
             s.source = source;
             s.nextCheck = 0f;
         }
 
-        /// <summary>The blazon stored on an item ("" for none).</summary>
-        public static string BlazonOf(ItemDrop.ItemData item) =>
-            item?.m_customData != null && item.m_customData.TryGetValue(HeraldTable.ItemBlazonKey, out var text) ? text ?? "" : "";
+        /// <summary>The blazon stored on an item ("" for none): pattern 1 unless another is asked for.</summary>
+        public static string BlazonOf(ItemDrop.ItemData item, int pattern = 1) =>
+            item?.m_customData != null && item.m_customData.TryGetValue(Patterns.Key(HeraldTable.ItemBlazonKey, pattern), out var text) ? text ?? "" : "";
 
         public static bool IsShield(ItemDrop.ItemData item) =>
             item?.m_shared != null && item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Shield;
@@ -54,21 +62,6 @@ namespace ValheimHeraldryMod.Shields
 
             if (Time.time < nextCheck) return;
             nextCheck = Time.time + 0.25f;
-            string text;
-            try { text = BlazonTextureCache.Normalise(source?.Invoke() ?? ""); }
-            catch { text = ""; } // the source's object went away
-            string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text; // picture charges arriving: redraw
-            if (key == current) return;
-            current = key;
-            Show(text);
-        }
-
-        private void Show(string text)
-        {
-            Restore();
-            ShieldTextures.Release(entry);
-            entry = null;
-
             if (!taggedChecked)
             {
                 taggedChecked = true;
@@ -76,9 +69,29 @@ namespace ValheimHeraldryMod.Shields
             }
             if (tagged != null)
             {
-                ShowTagged(text);
+                // Tagged faces: every pattern, each part redrawn only when its own arms change
+                tagged.Refresh(Safe, 512, _ => Heraldry.FieldRenderer.Arrangement.Compact, "Heraldry_Tagged_");
                 return;
             }
+
+            string text = BlazonTextureCache.Normalise(Safe(1));
+            string key = text.IndexOf('[') >= 0 ? text + "|" + ChargeLibrary.Generation : text; // picture charges arriving: redraw
+            if (key == current) return;
+            current = key;
+            Show(text);
+        }
+
+        private string Safe(int pattern)
+        {
+            try { return source?.Invoke(pattern) ?? ""; }
+            catch { return ""; } // the source's object went away
+        }
+
+        private void Show(string text)
+        {
+            Restore();
+            ShieldTextures.Release(entry);
+            entry = null;
             if (text.Length == 0) return;
 
             if (model == null)
@@ -109,34 +122,9 @@ namespace ValheimHeraldryMod.Shields
             applied = false;
         }
 
-        /// <summary>Arms on a tagged face: rendered in its own flat outline, around its centre point.</summary>
-        private void ShowTagged(string text)
-        {
-            BlazonTextureCache.Release(taggedKey);
-            taggedKey = null;
-            if (text.Length == 0)
-            {
-                tagged.Hide();
-                return;
-            }
-            var f = tagged.Face;
-            const int Longest = 512;
-            int w = f.Aspect >= 1f ? Longest : Mathf.Max(32, Mathf.RoundToInt(Longest * f.Aspect));
-            int h = f.Aspect >= 1f ? Mathf.Max(32, Mathf.RoundToInt(Longest / f.Aspect)) : Longest;
-            var shape = new BlazonTextureCache.Shape
-            {
-                Id = "Heraldry_Tagged_" + f.Key, UV = f.OutlineUV, Triangles = f.OutlineTriangles,
-                Arrangement = Heraldry.FieldRenderer.Arrangement.Compact, CentreU = f.CentreU, CentreV = f.CentreV,
-            };
-            var tex = BlazonTextureCache.Acquire(text, w, h, shape, out taggedKey);
-            tagged.Show(tex);
-        }
-
         private void OnDestroy()
         {
             tagged?.Destroy();
-            BlazonTextureCache.Release(taggedKey);
-            taggedKey = null;
             Restore();
             ShieldTextures.Release(entry);
             entry = null;

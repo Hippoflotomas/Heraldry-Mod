@@ -31,6 +31,16 @@ namespace ValheimHeraldryMod.UI
         /// <summary>Why painting can't happen right now (no shields...), or null.</summary>
         string Blocked { get; }
 
+        /// <summary>
+        ///     The pattern numbers (1–4) this thing has (tagged faces, 2026-10-16); null or one = nothing to choose,
+        ///     and the editor greys its pattern picker out.
+        /// </summary>
+        IList<int> Patterns { get; }
+        /// <summary>The pattern being edited; GetText, Apply and the preview shape are about this one.</summary>
+        int Pattern { get; }
+        /// <summary>Switches to another pattern; returns its current blazon for the text box.</summary>
+        string ChoosePattern(int number);
+
         /// <summary>Changing the arms here costs paint (when paint costs are on at all).</summary>
         bool CostsPaint { get; }
 
@@ -59,6 +69,9 @@ namespace ValheimHeraldryMod.UI
         public IList<UnityEngine.Sprite> ChoiceIcons => null;
         public int Chosen => -1;
         public string Choose(int index) => GetText();
+        public IList<int> Patterns => null;
+        public int Pattern => 1;
+        public string ChoosePattern(int number) => GetText();
         public string Blocked => null;
         public bool CostsPaint => HeraldryConfig.PaintCostsOnBanners;
         public string GetText() => banner.GetText();

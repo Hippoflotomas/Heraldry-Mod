@@ -51,9 +51,8 @@ namespace ValheimHeraldryMod.Rendering
         {
             var lib = ChargeLibrary.Instance;
             var result = new List<Target>();
-            string text = LookedAt(out what);
             var here = new List<Target>();
-            if (text.Length > 0)
+            foreach (var text in LookedAtAll(out what).Select(kv => kv.Value))
             {
                 var b = BlazonParser.Parse(text);
                 foreach (var c in b.Charges.Concat(b.Ordinaries.SelectMany(o => o.Charges)))
@@ -79,28 +78,56 @@ namespace ValheimHeraldryMod.Rendering
             return result;
         }
 
-        /// <summary>The stored blazon of what you're looking at (or your own shield/tabard), "" if none.</summary>
-        internal static string LookedAt(out string what)
+        /// <summary>
+        ///     The stored blazons of what you're looking at (or your own shield/tabard), by pattern number (tagged faces
+        ///     can carry up to four); empty patterns left out, so an empty list = no arms.
+        /// </summary>
+        internal static List<KeyValuePair<int, string>> LookedAtAll(out string what)
         {
             what = "nothing";
+            var result = new List<KeyValuePair<int, string>>();
+            void From(System.Func<int, string> textOf)
+            {
+                foreach (int n in Shields.Patterns.All)
+                {
+                    string s = textOf(n) ?? "";
+                    if (s.Length > 0) result.Add(new KeyValuePair<int, string>(n, s));
+                }
+            }
+            void One(string s) { if (!string.IsNullOrEmpty(s)) result.Add(new KeyValuePair<int, string>(1, s)); }
+
             var player = Player.m_localPlayer;
-            if (player == null) return "";
+            if (player == null) return result;
             var hover = player.GetHoverObject();
             if (hover != null)
             {
                 var banner = hover.GetComponentInParent<Banners.HeraldicBanner>();
-                if (banner != null) { what = "this banner"; return banner.GetText() ?? ""; }
+                if (banner != null) { what = "this banner"; One(banner.GetText()); return result; }
+                var piece = hover.GetComponentInParent<Banners.HeraldicPiece>();
+                if (piece != null)
+                {
+                    what = "this " + (piece.GetHoverName() is string hn && hn.Length > 0 ? hn : "piece");
+                    From(piece.GetText);
+                    return result;
+                }
                 var table = hover.GetComponentInParent<Station.HeraldTable>();
-                if (table != null) { what = "the herald's table"; return table.GetDisplayText(); }
+                if (table != null) { what = "the herald's table"; One(table.GetDisplayText()); return result; }
                 var stand = hover.GetComponentInParent<ItemStand>();
                 var standView = stand != null ? stand.GetComponent<ZNetView>() : null;
                 if (standView != null && standView.IsValid())
                 {
                     what = "the shield on this stand";
-                    return standView.GetZDO().GetString(Shields.ShieldPatches.ZdoItem, "");
+                    var zdo = standView.GetZDO();
+                    From(n => zdo.GetString(Shields.Patterns.Key(Shields.ShieldPatches.ZdoItem, n), ""));
+                    return result;
                 }
                 var drop = hover.GetComponentInParent<ItemDrop>();
-                if (drop != null) { what = "this " + Localization.instance.Localize(drop.m_itemData.m_shared.m_name); return Shields.HeraldicShield.BlazonOf(drop.m_itemData); }
+                if (drop != null)
+                {
+                    what = "this " + Localization.instance.Localize(drop.m_itemData.m_shared.m_name);
+                    From(n => Shields.HeraldicShield.BlazonOf(drop.m_itemData, n));
+                    return result;
+                }
             }
             var other = player.GetHoverCreature() as Player;
             if (other != null && other != player)
@@ -109,25 +136,25 @@ namespace ValheimHeraldryMod.Rendering
                 if (zdo != null)
                 {
                     what = other.GetPlayerName() + "'s arms";
-                    string s = zdo.GetString(Shields.ShieldPatches.ZdoLeft, "");
-                    if (s.Length == 0) s = zdo.GetString(Shields.ShieldPatches.ZdoBack, "");
-                    if (s.Length == 0)
+                    From(n => zdo.GetString(Shields.Patterns.Key(Shields.ShieldPatches.ZdoLeft, n), ""));
+                    if (result.Count == 0) From(n => zdo.GetString(Shields.Patterns.Key(Shields.ShieldPatches.ZdoBack, n), ""));
+                    if (result.Count == 0)
                     {
                         string t = zdo.GetString(Tabards.HeraldicTabardWearer.ZdoKey, "");
                         int bar = t.IndexOf('|');
-                        s = bar >= 0 ? t.Substring(bar + 1) : "";
+                        One(bar >= 0 ? t.Substring(bar + 1) : "");
                     }
-                    return s;
+                    return result;
                 }
             }
             foreach (var item in player.GetInventory().GetEquippedItems())
             {
-                string s = Shields.HeraldicShield.BlazonOf(item);
-                if (s.Length == 0) continue;
+                From(n => Shields.HeraldicShield.BlazonOf(item, n));
+                if (result.Count == 0) continue;
                 what = "your " + Localization.instance.Localize(item.m_shared.m_name);
-                return s;
+                return result;
             }
-            return "";
+            return result;
         }
 
         internal static bool NeedTargets(List<Target> targets, string arg, string what, string verb)
@@ -255,11 +282,16 @@ namespace ValheimHeraldryMod.Rendering
             public override void Run(string[] args)
             {
                 var lib = ChargeLibrary.Instance;
-                string text = LookedAt(out string what);
-                if (text.Length == 0) { Print($"No arms on {what}."); return; }
-                Print($"{what}: {TextArt.ForDisplay(BlazonText.Visible(text))}");
-                var b = BlazonParser.Parse(text);
-                var charges = b.Charges.Concat(b.Ordinaries.SelectMany(o => o.Charges)).Where(c => c.PackName != null).ToList();
+                var all = LookedAtAll(out string what);
+                if (all.Count == 0) { Print($"No arms on {what}."); return; }
+                bool several = all.Count > 1 || all[0].Key != 1;
+                var charges = new List<Charge>();
+                foreach (var kv in all)
+                {
+                    Print($"{what}{(several ? ", pattern " + kv.Key : "")}: {TextArt.ForDisplay(BlazonText.Visible(kv.Value))}");
+                    var b = BlazonParser.Parse(kv.Value);
+                    charges.AddRange(b.Charges.Concat(b.Ordinaries.SelectMany(o => o.Charges)).Where(c => c.PackName != null));
+                }
                 if (charges.Count == 0) { Print("No picture charges."); return; }
                 foreach (var c in charges)
                 {

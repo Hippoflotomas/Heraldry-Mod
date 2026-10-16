@@ -180,8 +180,10 @@ tagged pieces (`TaggedPieceEditModifier` + `TaggedPieceEditKey`, default Shift+E
 ## For modders
 Make your shields or build pieces paintable without any code. In your model, name the paintable surface
 object (or its material) **`ValheimHeraldryMod_Face`**. You can also add an empty named
-**`ValheimHeraldryMod_CentrePoint`** to set the centre of the arms on a lopsided shape. Without this mod
-installed, the tags do nothing. The full spec is in
+**`ValheimHeraldryMod_CentrePoint`** to set the centre of the arms on a lopsided shape. Number the tags
+(`ValheimHeraldryMod_Face_2` … `_4`) for up to four different patterns on one item, and add
+**`ValheimHeraldryMod_UseUVs`** to use your own UVs on faces that wrap round. Without this mod installed, the tags
+do nothing. The full spec is in
 [ModderGuide.md](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md).
 
 ## Known limitations

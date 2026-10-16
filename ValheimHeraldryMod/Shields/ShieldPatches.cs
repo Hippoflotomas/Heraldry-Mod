@@ -1,4 +1,5 @@
-﻿using HarmonyLib;
+﻿using System.Linq;
+using HarmonyLib;
 using UnityEngine;
 using ValheimHeraldryMod.Heraldry;
 
@@ -43,14 +44,26 @@ namespace ValheimHeraldryMod.Shields
             if (vis != null) SetupVisEquipment?.Invoke(player, new object[] { vis, false });
         }
 
-        /// <summary>The face of an item's shield model (for the editor's preview), or null.</summary>
-        public static ShieldFace FaceForItem(ItemDrop.ItemData item)
+        /// <summary>The face of an item's shield model for this pattern (the editor's preview, icons), or null.</summary>
+        public static ShieldFace FaceForItem(ItemDrop.ItemData item, int pattern = 1)
         {
             var prefab = item?.m_dropPrefab;
             if (prefab == null) return null;
-            var tagged = TaggedFace.For(prefab, out _); // another modder's tagged face wins
-            if (tagged != null) return ShieldFace.FromTagged(tagged, prefab.name);
+            var tagged = TaggedModel.ForPrefab(prefab); // another modder's tagged faces win
+            if (tagged != null)
+            {
+                var part = tagged.First(pattern) ?? tagged.Faces.FirstOrDefault();
+                return part != null ? ShieldFace.FromTagged(part, prefab.name) : null;
+            }
             return ShieldFace.For(prefab.name, ShieldFace.FindModel(prefab));
+        }
+
+        /// <summary>The patterns an item can carry: its tagged faces' numbers, or just 1.</summary>
+        public static int[] PatternsOf(ItemDrop.ItemData item)
+        {
+            var tagged = TaggedModel.ForPrefab(item?.m_dropPrefab);
+            var numbers = tagged?.Numbers;
+            return numbers != null && numbers.Length > 0 ? numbers : new[] { 1 };
         }
 
         private static string PrefabName(int hash)
@@ -62,7 +75,7 @@ namespace ValheimHeraldryMod.Shields
 
         /// <summary>Not on the exclude list, or carrying a tagged face (its modder asked for it to be painted).</summary>
         public static bool Paintable(GameObject prefab) =>
-            prefab != null && (!HeraldryConfig.IsShieldExcluded(prefab.name) || TaggedFace.HasTag(prefab));
+            prefab != null && (!HeraldryConfig.IsShieldExcluded(prefab.name) || TaggedModel.HasTag(prefab));
 
         private static void SetIfChanged(ZDO zdo, string key, string value)
         {
@@ -78,8 +91,13 @@ namespace ValheimHeraldryMod.Shields
             var nview = __instance.GetComponent<ZNetView>();
             if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
             var zdo = nview.GetZDO();
-            SetIfChanged(zdo, ZdoLeft, HeraldicShield.BlazonOf(LeftItem(__instance)));
-            SetIfChanged(zdo, ZdoBack, HeraldicShield.BlazonOf(HiddenLeftItem(__instance)));
+            var left = LeftItem(__instance);
+            var back = HiddenLeftItem(__instance);
+            foreach (int n in Patterns.All)
+            {
+                SetIfChanged(zdo, Patterns.Key(ZdoLeft, n), HeraldicShield.BlazonOf(left, n));
+                SetIfChanged(zdo, Patterns.Key(ZdoBack, n), HeraldicShield.BlazonOf(back, n));
+            }
         }
 
         /// <summary>Everyone: paint the shield models a player is showing (in hand, on the back).</summary>
@@ -119,7 +137,7 @@ namespace ValheimHeraldryMod.Shields
             if (instance == null || instance.GetComponent<HeraldicShield>() != null) return;
             string name = PrefabName(hash);
             if (name == null) return;
-            HeraldicShield.Attach(instance, name, () => nview != null && nview.IsValid() ? nview.GetZDO().GetString(key, "") : "");
+            HeraldicShield.Attach(instance, name, n => nview != null && nview.IsValid() ? nview.GetZDO().GetString(Patterns.Key(key, n), "") : "");
         }
 
         /// <summary>Shields lying on the ground.</summary>
@@ -130,8 +148,8 @@ namespace ValheimHeraldryMod.Shields
             var item = __instance.m_itemData;
             if (!HeraldicShield.IsShield(item)) return;
             string name = item.m_dropPrefab != null ? item.m_dropPrefab.name : Utils.GetPrefabName(__instance.gameObject);
-            if (HeraldryConfig.IsShieldExcluded(name) && !TaggedFace.HasTag(item.m_dropPrefab)) return;
-            HeraldicShield.Attach(__instance.gameObject, name, () => HeraldicShield.BlazonOf(__instance.m_itemData));
+            if (HeraldryConfig.IsShieldExcluded(name) && !TaggedModel.HasTag(item.m_dropPrefab)) return;
+            HeraldicShield.Attach(__instance.gameObject, name, n => HeraldicShield.BlazonOf(__instance.m_itemData, n));
         }
 
         /// <summary>
@@ -143,9 +161,13 @@ namespace ValheimHeraldryMod.Shields
         private static void NoteArms(ItemDrop.ItemData itemData, ZDO zdo, int index)
         {
             if (zdo == null) return;
-            string key = index < 0 ? ZdoItem : index + "_" + ZdoItem;
-            string text = HeraldicShield.BlazonOf(itemData);
-            if (text.Length > 0 || zdo.GetString(key, "").Length > 0) SetIfChanged(zdo, key, text);
+            string baseKey = index < 0 ? ZdoItem : index + "_" + ZdoItem;
+            foreach (int n in Patterns.All)
+            {
+                string key = Patterns.Key(baseKey, n);
+                string text = HeraldicShield.BlazonOf(itemData, n);
+                if (text.Length > 0 || zdo.GetString(key, "").Length > 0) SetIfChanged(zdo, key, text);
+            }
         }
 
         /// <summary>Shields hung on item stands.</summary>
@@ -158,7 +180,7 @@ namespace ValheimHeraldryMod.Shields
             string name = PrefabName(StandVisualHash(__instance));
             if (name == null) return;
             var nview = StandNView(__instance);
-            HeraldicShield.Attach(visual, name, () => nview != null && nview.IsValid() ? nview.GetZDO().GetString(ZdoItem, "") : "");
+            HeraldicShield.Attach(visual, name, n => nview != null && nview.IsValid() ? nview.GetZDO().GetString(Patterns.Key(ZdoItem, n), "") : "");
         }
     }
 
@@ -172,8 +194,16 @@ namespace ValheimHeraldryMod.Shields
         [HarmonyPostfix]
         private static void Tooltip(ItemDrop.ItemData item, ref string __result)
         {
-            string text = HeraldicShield.BlazonOf(item);
-            if (text.Length > 0) __result += $"\n\n<color=orange>Arms:</color> {Rendering.TextArt.ForDisplay(BlazonText.Visible(text))}";
+            bool first = true;
+            foreach (int n in Patterns.All)
+            {
+                string text = HeraldicShield.BlazonOf(item, n);
+                if (text.Length == 0) continue;
+                string label = n == 1 && HeraldicShield.BlazonOf(item, 2).Length + HeraldicShield.BlazonOf(item, 3).Length + HeraldicShield.BlazonOf(item, 4).Length == 0
+                    ? "Arms:" : $"Arms {n}:";
+                __result += (first ? "\n\n" : "\n") + $"<color=orange>{label}</color> {Rendering.TextArt.ForDisplay(BlazonText.Visible(text))}";
+                first = false;
+            }
         }
     }
 }

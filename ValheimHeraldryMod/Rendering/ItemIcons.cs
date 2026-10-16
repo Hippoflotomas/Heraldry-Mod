@@ -48,11 +48,14 @@ namespace ValheimHeraldryMod.Rendering
 
         private static Sprite For(ItemDrop.ItemData item)
         {
-            string text = HeraldicShield.BlazonOf(item);
-            if (text.Length == 0 || item.m_dropPrefab == null) return null;
-            string prefab = item.m_dropPrefab.name;
+            if (item?.m_dropPrefab == null) return null;
+            // Pattern 1 (or the lowest a tagged shield has) is the one on the icon (Hippo, 2026-10-16)
             bool tabard = Tabards.TabardItem.IsTabard(item);
-            if (!tabard && (!HeraldicShield.IsShield(item) || (HeraldryConfig.IsShieldExcluded(prefab) && !TaggedFace.HasTag(item.m_dropPrefab)))) return null;
+            int pattern = tabard ? 1 : TaggedModel.ForPrefab(item.m_dropPrefab)?.IconPattern ?? 1;
+            string text = HeraldicShield.BlazonOf(item, pattern);
+            if (text.Length == 0) return null;
+            string prefab = item.m_dropPrefab.name;
+            if (!tabard && (!HeraldicShield.IsShield(item) || (HeraldryConfig.IsShieldExcluded(prefab) && !TaggedModel.HasTag(item.m_dropPrefab)))) return null;
 
             text = BlazonLimits.Drawable(BlazonTextureCache.Normalise(text));
             string key = prefab + "|" + text + (text.IndexOf('[') >= 0 ? "|packs" + ChargeLibrary.Generation : "");
@@ -73,7 +76,7 @@ namespace ValheimHeraldryMod.Rendering
             }
             else
             {
-                var face = ShieldPatches.FaceForItem(item);
+                var face = ShieldPatches.FaceForItem(item, pattern);
                 if (face == null) return null;
                 aspect = face.Aspect; uv = face.OutlineUV; tris = face.OutlineTriangles;
                 arrangement = FieldRenderer.Arrangement.Compact;

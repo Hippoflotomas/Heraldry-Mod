@@ -27,6 +27,7 @@ namespace ValheimHeraldryMod.UI
         private const float PreviewH = 560, PreviewX = 30, PreviewY = 70;
         private const float RightX = 310, RightW = 720;
         private const float ChoiceW = 420, ChoiceRowH = 40;
+        private const float PatternW = 160;
         private const int FontSize = 20;
         private const float LineSpacing = 1.7f;   // room for the swatches above each line
         private const float TopPad = 12f;          // room for swatches above the first line
@@ -72,6 +73,10 @@ namespace ValheimHeraldryMod.UI
         private Dropdown ddSecond, ddSecondColour, ddSecondLine;
         private Dropdown ddCharge, ddStyle, ddChargeColour, ddCount, ddPlacement;
         private Image choiceIcon;
+        // ---- pattern picker (tagged faces with up to four patterns; Hippo 2026-10-16) ----
+        private Dropdown patternPicker;
+        private List<int> patternNumbers = new List<int> { 1 };
+        private bool syncingPattern;
         private GameObject choiceRow, choiceList;
         private RectTransform choiceListContent;
         private float aspect = 0.4f;
@@ -141,6 +146,13 @@ namespace ValheimHeraldryMod.UI
             labelRt.offsetMin = new Vector2(46, 0); labelRt.offsetMax = new Vector2(-30, 0);
             var arrow = Label("\u25BC", ChoiceW - 28, 10, 22, 20, 14, Beige, header.transform);
             arrow.alignment = TextAnchor.MiddleCenter;
+
+            // ---- pattern picker: which of the item's patterns is being edited; greyed out when there's only one ----
+            var patternGo = gui.CreateDropDown(panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero, DropdownFont, PatternW, BasicRowH);
+            Place(patternGo.GetComponent<RectTransform>(), RightX + 130, 62, PatternW, BasicRowH);
+            patternGo.AddComponent<CanvasGroup>();
+            patternPicker = patternGo.GetComponent<Dropdown>();
+            patternPicker.onValueChanged.AddListener(PickPattern);
 
             // ---- preview ----
             var frame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image));
@@ -275,6 +287,7 @@ namespace ValheimHeraldryMod.UI
             choiceRow.SetActive(target.Choices != null);
             choiceList.SetActive(false);
             ShowChoice();
+            ShowPatterns();
             Load(target.GetText());
             basic = new BasicBlazon();
             FillChargeList();
@@ -360,6 +373,30 @@ namespace ValheimHeraldryMod.UI
             Load(target.Choose(index));
             SetupShape();
             ShowChoice();
+            ShowPatterns();
+            renderAt = 0f;
+        }
+
+        /// <summary>The target's patterns in the picker (just "Pattern 1", greyed out, when there's only one).</summary>
+        private void ShowPatterns()
+        {
+            var list = target?.Patterns;
+            patternNumbers = list != null && list.Count > 0 ? list.ToList() : new List<int> { target?.Pattern ?? 1 };
+            syncingPattern = true;
+            patternPicker.ClearOptions();
+            patternPicker.AddOptions(patternNumbers.Select(n => "Pattern " + n).ToList());
+            Set(patternPicker, patternNumbers.IndexOf(target?.Pattern ?? 1), patternNumbers.Count > 1);
+            syncingPattern = false;
+        }
+
+        /// <summary>Another pattern: its own arms in the box and its own shape in the preview (unapplied edits are dropped).</summary>
+        private void PickPattern(int index)
+        {
+            if (syncingPattern || target == null || index < 0 || index >= patternNumbers.Count) return;
+            int number = patternNumbers[index];
+            if (number == target.Pattern) return;
+            Load(target.ChoosePattern(number));
+            SetupShape();
             renderAt = 0f;
         }
 

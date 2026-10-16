@@ -65,7 +65,7 @@ namespace ValheimHeraldryMod.Shields
             "ShieldSerpentscale",
         };
 
-        /// <summary>A tagged face described the way the table, preview and icons expect.</summary>
+        /// <summary>A tagged face (one part, the first showing its pattern) described the way the table, preview and icons expect.</summary>
         public static ShieldFace FromTagged(TaggedFace t, string prefabName) => new ShieldFace
         {
             Tagged = t,
@@ -74,7 +74,7 @@ namespace ValheimHeraldryMod.Shields
             Aspect = t.Aspect,
             CentreU = t.CentreU,
             CentreV = t.CentreV,
-            ShapeId = "Heraldry_Tagged_" + prefabName,
+            ShapeId = "Heraldry_Tagged_" + prefabName + "_" + t.Number,
             Key = t.Key,
             Note = t.Note,
         };

@@ -1,3 +1,12 @@
+## Unreleased
+- Tagged faces (for other modders): up to four patterns per item or piece (`ValheimHeraldryMod_Face_1` … `_4`,
+  unnumbered = 1; centre points numbered the same way), each with a full copy of its arms on every part that
+  carries its number. The editor gets a pattern picker (greyed out when there's only one); each pattern is painted
+  and paid for separately; inventory icons show pattern 1. Existing tagged items keep their arms.
+- Tagged faces: `ValheimHeraldryMod_UseUVs` makes every tagged face use the modder's own UVs (for faces that wrap
+  round); faces that can't be laid out flat are refused with a hint, strongly curved ones get a warning.
+- `heraldry_info` and the other charge commands now see tagged pieces, and every pattern.
+
 ## Version 1.1.0
 - Tartan: `tartan "K4 R24 K24 Y4"` (a traditional threadcount) wherever a tincture goes, woven as a 2/2 twill and
   centred on the arms. Each stripe gets its own colour swatch and checks in the editor; each colour costs paint.
