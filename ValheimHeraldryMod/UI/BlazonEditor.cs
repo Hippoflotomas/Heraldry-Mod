@@ -158,6 +158,7 @@ namespace ValheimHeraldryMod.UI
             var frame = new GameObject("PreviewFrame", typeof(RectTransform), typeof(Image));
             frame.transform.SetParent(panel.transform, false);
             frame.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.35f);
+            frame.GetComponent<Image>().raycastTarget = false;
             Place(frame.GetComponent<RectTransform>(), PreviewX - 10, PreviewY - 10, 250, PreviewH + 20);
             var pv = new GameObject("Preview", typeof(RectTransform), typeof(RawImage));
             pv.transform.SetParent(panel.transform, false);
@@ -1007,7 +1008,11 @@ namespace ValheimHeraldryMod.UI
             var go = gui.CreateText(text, parent ?? panel.transform, new Vector2(0, 1), new Vector2(0, 1), Vector2.zero,
                 gui.AveriaSerifBold, size, colour, true, Color.black, w, h, false);
             Place(go.GetComponent<RectTransform>(), x, y, w, h);
-            return go.GetComponent<Text>();
+            // Labels are only to read: they must never catch the mouse, or they eat clicks meant for the
+            // controls under them (the "Blazon" label's box covered most of the pattern picker)
+            var label = go.GetComponent<Text>();
+            label.raycastTarget = false;
+            return label;
         }
 
         private Text AddButton(string text, float x, float y, float w, float h, UnityEngine.Events.UnityAction onClick, Transform parent = null)
