@@ -1,3 +1,9 @@
+## Version 1.1.0
+- Tartan: `tartan "K4 R24 K24 Y4"` (a traditional threadcount) wherever a tincture goes, woven as a 2/2 twill and
+  centred on the arms. Each stripe gets its own colour swatch and checks in the editor; each colour costs paint.
+- Mod page: videos of Basic mode, Advanced mode and making a tartan.
+- Herald's table recipe: 10 wood and 6 leather scraps (the berries and guck are gone now that paints exist).
+
 ## Version 1.0.0
 First public release.
 - Heraldic banners: the vanilla hanging banner and a free-standing large standard, edited in place (E), ward

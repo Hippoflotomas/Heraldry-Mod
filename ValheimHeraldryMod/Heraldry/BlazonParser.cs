@@ -1238,6 +1238,8 @@ namespace ValheimHeraldryMod.Heraldry
             string w = Cur;
             if (w == null) return false;
 
+            if (w == "tartan") return TryTartan(out t);
+
             if (Lexicon.Tinctures.TryGetValue(w, out var e))
             {
                 var tt = Take(e.PassableNote == null ? WordStatus.Correct : WordStatus.Passable, e.PassableNote);
@@ -1320,6 +1322,42 @@ namespace ValheimHeraldryMod.Heraldry
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        ///     tartan "B24 K4 B4 K4 B4 K20 G24 K6 G24 K20 B22 K4 B4": a tartan in place of a tincture (Hippo, 2026-10-15),
+        ///     anywhere a tincture can go. Not blazon; this mod's own word, like "tattered". The quoted text is a
+        ///     traditional threadcount (see <see cref="Tartan"/>); each stripe gets its own note and swatch.
+        /// </summary>
+        private bool TryTartan(out Tincture t)
+        {
+            t = null;
+            var word = Take(WordStatus.Correct);
+            if (AtEnd || !IsQuoted(Cur))
+            {
+                Mark(word, WordStatus.Wrong, "a tartan needs its threadcount in quotes, e.g. tartan \"K4 R24 K24 Y4\"");
+                return false;
+            }
+            var q = Take(WordStatus.Correct);
+            string raw = q.Note.Word;
+            int open = 1;
+            int close = raw.Length > 1 && IsQuote(raw[raw.Length - 1]) ? raw.Length - 1 : raw.Length;
+            string inner = raw.Substring(open, Math.Max(0, close - open));
+            var sett = Tartan.Parse(inner, q.Note.Start + open, result.Words, out string problem);
+            if (sett == null)
+            {
+                Mark(q, WordStatus.Wrong, problem);
+                return false;
+            }
+            if (problem != null) Mark(q, WordStatus.Passable, problem);
+            t = new Tincture { Kind = TinctureKind.Tartan, Name = "tartan \"" + sett.Canonical + "\"", Hex = sett.Average, Sett = sett };
+            int threads = sett.Threads.Length;
+            Mark(word, WordStatus.Correct, "Heraldry Mod's own word, not blazon: a woven tartan, " +
+                (sett.Repeating ? "a repeating sett" : "mirrored at its first and last stripes") +
+                $", {threads} threads to the repeat");
+            word.Note.Tincture = t;
+            mentioned.Add(t);
+            return true;
         }
 
         /// <summary>Distinct tinctures in order of first mention ("of the first" counts tinctures, not words).</summary>

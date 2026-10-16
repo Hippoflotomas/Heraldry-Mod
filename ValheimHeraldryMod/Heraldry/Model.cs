@@ -43,14 +43,17 @@ namespace ValheimHeraldryMod.Heraldry
         public override string ToString() => $"{Word}:{Status}{(Message == null ? "" : " (" + Message + ")")}";
     }
 
-    public enum TinctureKind { Metal, Colour, Stain, Fur, Hex, Proper, Counterchanged }
+    public enum TinctureKind { Metal, Colour, Stain, Fur, Hex, Proper, Counterchanged, Tartan }
 
     public sealed class Tincture
     {
         public TinctureKind Kind;
-        /// <summary>Canonical heraldic name ("or", "ermine"), or "#rrggbb" for hex.</summary>
+        /// <summary>Canonical heraldic name ("or", "ermine"), "#rrggbb" for hex, or tartan "..." for a tartan.</summary>
         public string Name;
+        /// <summary>The colour for hex; for a tartan, its average colour (swatches, previews).</summary>
         public Rgba Hex;
+        /// <summary>A tartan's sett (Kind = Tartan only).</summary>
+        public Sett Sett;
 
         public override string ToString() => Name;
     }
@@ -198,14 +201,15 @@ namespace ValheimHeraldryMod.Heraldry
         public int Tattered;
 
         /// <summary>
-        ///     How much there is to draw, for the server's element limit: one for a partitioned or patterned field,
+        ///     How much there is to draw, for the server's element limit: one for a partitioned, patterned or tartan field,
         ///     one per ordinary, one per charge (three mullets = three), charges on ordinaries included.
         /// </summary>
         public int Elements
         {
             get
             {
-                int n = Field != null && (Field.Partition != PartitionKind.None || Field.Variation != VariationKind.None) ? 1 : 0;
+                int n = Field != null && (Field.Partition != PartitionKind.None || Field.Variation != VariationKind.None ||
+                                          Field.Tinctures.Exists(t => t != null && t.Kind == TinctureKind.Tartan)) ? 1 : 0;
                 foreach (var o in Ordinaries)
                 {
                     n += Math.Max(1, o.Count);

@@ -20,25 +20,37 @@ players add themselves.
 - **Charges** (the pictures on a coat of arms): geometric charges drawn by the mod, the game's own trophy
   heads and any in-game item, and **your own pictures**, which are passed to other players on the server
   when they agree to take them.
+- **Tartan**: weave a tartan from a traditional threadcount and use it like any colour, on banners, shields
+  and tabards.
 - **Mottos**: scrolls and ordinaries can carry words, in Latin letters or in runes.
 - **Tattered**: put *slightly tattered*, *tattered* or *badly tattered* at the start of a blazon. Banners
   and tabards tear; shields get worn paint. The same arms always tear the same way.
-- **Paint**: painting costs paint, mixed from berries, coal and bone at the herald's table. Admins can
+- **Paint**: painting costs paint, mixed from berries, dandelions, coal and bone at the herald's table. Admins can
   configure everything, including switching paint costs off.
 - **Other modders** can make their own shields and build pieces paintable by tagging a face in their model.
   No code is needed (see *For modders*).
 
 ## Getting started
-1. Build the **herald's table** with the hammer, under the **Heraldry** tab: 10 wood, 1 raspberry, 1 blueberry,
-   1 guck and 6 leather scraps, near a workbench. It needs a roof.
+1. Build the **herald's table** with the hammer, under the **Heraldry** tab: 10 wood and 6 leather scraps,
+   near a workbench. It needs a roof.
 2. At the table, **E** opens crafting (paints and the tabard), and **Shift+E** paints a shield or tabard
    from your inventory.
 3. Build a **heraldic banner** or a **large standard** from the Heraldry tab and press **E** on it.
 4. New to heraldry? Stay on the **Basic** tab. Each choice shows its blazon underneath, and you can carry it
    over to **Advanced** to keep editing.
 
+[![Making a coat of arms in Basic mode](https://img.youtube.com/vi/0VFxfnxElqc/hqdefault.jpg)](https://youtu.be/0VFxfnxElqc)
+
+*▶ Making a coat of arms in Basic mode (YouTube)*
+
 ## Writing a blazon
-A blazon names the **field** first, then what lies on it. Capitals and commas are optional.
+A blazon names the **field** first, then what lies on it. Capitals and commas are optional. The **Advanced**
+tab is where you write it yourself, with the preview and the underlines guiding you.
+
+[![Writing a blazon in Advanced mode](https://img.youtube.com/vi/2uveUN_iG6I/hqdefault.jpg)](https://youtu.be/2uveUN_iG6I)
+
+*▶ Writing a blazon in Advanced mode (YouTube)*
+
 
 | Blazon | What you get |
 |---|---|
@@ -53,6 +65,7 @@ A blazon names the **field** first, then what lies on it. Capitals and commas ar
 | `Azure, a scroll argent inscribed "FOR ODIN" sable` | a motto scroll |
 | `Gules, a fess or inscribed "SKOL" in runes sable` | words in Elder Futhark |
 | `Tattered gules, a saltire argent` | a battle-worn banner |
+| `Tartan "B24 K4 B4 K4 B4 K20 G24 K6 G24 K20 B22 K4 B4", a bordure azure` | a woven tartan field |
 
 **Tinctures**: or (gold), argent (silver), gules (red), azure (blue), sable (black), vert (green), purpure
 (purple), tenné, sanguine, murrey; furs ermine, ermines, erminois, pean, vair, counter-vair, potent; any
@@ -77,6 +90,27 @@ Bonemass, Moder, Yagluth, the Queen, Fader), and **any item** by its in-game nam
 *in the first and fourth quarters*; voided, fimbriated, counterchanged; contourné, inverted, reversed.
 
 Good references: [drawshield.net](https://drawshield.net) and Wikipedia's "Glossary of heraldry".
+
+## Tartan
+*Tartan* isn't a blazon word; it's this mod's own addition. Write `tartan` followed by a traditional
+**threadcount** in quotes, anywhere a colour can go: as the field (`Tartan "K4 R24 K24 Y4", a chief or`), on
+an ordinary (`Or, a bend tartan "K4 R24 K24 Y4"`) or on a charge.
+
+[![Making a tartan](https://img.youtube.com/vi/4RFmiBCh438/hqdefault.jpg)](https://youtu.be/4RFmiBCh438)
+
+*▶ Making a tartan (YouTube)*
+
+- Each stripe is a **colour code** followed by its **number of threads**: K black, W white, R red, B blue,
+  G green, Y yellow, O orange, P purple, N grey, T brown, with L (light) or D (dark) in front (`DB`, `LG`).
+- The count **mirrors** at its first and last stripes, as most tartans do. A slash marks a half-count pivot:
+  `K/2 R24 K24 Y/2` is the same tartan as `K4 R24 K24 Y4`.
+- A tartan that repeats without mirroring is written with `...` at both ends: `...K4 R24 K24 Y4...`.
+- It's woven as a 2/2 twill and centred on the middle of the arms, so it sits the same way on every item.
+- Each colour in the threadcount costs paint like a tincture.
+
+**Looking for a real tartan?** The [Scottish Register of Tartans](https://www.tartanregister.gov.uk) lists
+thousands of them with their threadcounts. Type the threadcount in quotes after `tartan`; if it uses a colour
+code this mod doesn't know, the editor underlines it, and the nearest code from the list above will do.
 
 ## Paint
 With paint costs on, each colour in the arms costs paint, split by how it is mixed. Red costs red paint; green

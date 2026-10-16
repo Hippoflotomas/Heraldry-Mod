@@ -126,9 +126,6 @@ namespace ValheimHeraldryMod.Station
                 Requirements = new[]
                 {
                     new RequirementConfig("Wood", 10, 0, true),
-                    new RequirementConfig("Raspberry", 1, 0, true),
-                    new RequirementConfig("Blueberries", 1, 0, true),
-                    new RequirementConfig("Guck", 1, 0, true),
                     new RequirementConfig("LeatherScraps", 6, 0, true),
                 },
             };

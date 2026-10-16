@@ -146,7 +146,7 @@ namespace ValheimHeraldryMod.Rendering
         {
             var t = b.Field != null && b.Field.Tinctures.Count > 0 ? b.Field.Tinctures[0] : null;
             if (t == null) return new Color32(255, 0, 255, 255);
-            if (t.Kind == TinctureKind.Hex) return new Color32(t.Hex.R, t.Hex.G, t.Hex.B, 255);
+            if (t.Kind == TinctureKind.Hex || t.Kind == TinctureKind.Tartan) return new Color32(t.Hex.R, t.Hex.G, t.Hex.B, 255);
             return Lexicon.Palette.TryGetValue(t.Name, out var c) ? new Color32(c.R, c.G, c.B, 255) : Linen;
         }
 

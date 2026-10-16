@@ -18,6 +18,11 @@ namespace ValheimHeraldryMod.Heraldry
         public const float ChiefDepth = 0.25f;      // fraction of the HEIGHT
         public const float BordureWidth = 0.10f;
         public const float ChevronApex = 0.35f;     // fraction of the height
+        /// <summary>
+        ///     Tartan threads across the narrow side. Like the furs, a tartan is sized to the object it's on, so a
+        ///     typical sett (about 300 threads) shows about one and a half repeats across a banner's width.
+        /// </summary>
+        public const float TartanThreadsAcross = 450f;
         private const int Samples = 3;              // 3x3 supersampling at edges only
 
         private static readonly Rgba Magenta = new Rgba(255, 0, 255);
@@ -129,15 +134,28 @@ namespace ValheimHeraldryMod.Heraldry
             for (int x = 0; x < w; x++)
                 px[y * w + x] = Sample(x + 0.5f, y + 0.5f);
 
+            // A tartan differs from pixel to pixel everywhere, and it's already filtered: find the edges on a copy
+            // with every tartan drawn flat, so only real edges (ordinaries, charges) are supersampled
+            var edges = px;
+            if (tartans.Count > 0)
+            {
+                edges = new Rgba[w * h];
+                flatTartans = true;
+                for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    edges[y * w + x] = Sample(x + 0.5f, y + 0.5f);
+                flatTartans = false;
+            }
+
             // Pass 2: supersample only where a neighbour differs (edges); flat areas stay as they are
             var result = (Rgba[])px.Clone();
             float step = 1f / Samples;
             for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
-                var c0 = px[y * w + x];
-                if ((x == 0 || Same(c0, px[y * w + x - 1])) && (x == w - 1 || Same(c0, px[y * w + x + 1])) &&
-                    (y == 0 || Same(c0, px[(y - 1) * w + x])) && (y == h - 1 || Same(c0, px[(y + 1) * w + x])))
+                var c0 = edges[y * w + x];
+                if ((x == 0 || Same(c0, edges[y * w + x - 1])) && (x == w - 1 || Same(c0, edges[y * w + x + 1])) &&
+                    (y == 0 || Same(c0, edges[(y - 1) * w + x])) && (y == h - 1 || Same(c0, edges[(y + 1) * w + x])))
                     continue;
                 int r = 0, g = 0, b = 0;
                 for (int sy = 0; sy < Samples; sy++)
@@ -555,7 +573,27 @@ namespace ValheimHeraldryMod.Heraldry
             if (t == null) return Magenta;
             if (t.Kind == TinctureKind.Hex) return t.Hex;
             if (t.Kind == TinctureKind.Fur) return Fur(t.Name, x, y);
+            if (t.Kind == TinctureKind.Tartan) return TartanAt(t.Sett, x, y);
             return Lexicon.Palette.TryGetValue(t.Name, out var c) ? c : Magenta;
+        }
+
+        /// <summary>Each tartan drawn once over the whole image, centred on the fess point, then looked up per sample.</summary>
+        private readonly Dictionary<Sett, Rgba[]> tartans = new Dictionary<Sett, Rgba[]>();
+
+        /// <summary>While finding edges: every tartan as its flat average colour.</summary>
+        private bool flatTartans;
+
+        private Rgba TartanAt(Sett sett, float x, float y)
+        {
+            if (sett == null || sett.Threads == null || sett.Threads.Length == 0) return Magenta;
+            if (flatTartans) return sett.Average;
+            if (!tartans.TryGetValue(sett, out var img))
+            {
+                img = Tartan.Draw(sett, w, h, cxp, cyp, unit / TartanThreadsAcross);
+                tartans[sett] = img;
+            }
+            int ix = Math.Max(0, Math.Min(w - 1, (int)x)), iy = Math.Max(0, Math.Min(h - 1, (int)y));
+            return img[iy * w + ix];
         }
 
         private Rgba Fur(string name, float x, float y)

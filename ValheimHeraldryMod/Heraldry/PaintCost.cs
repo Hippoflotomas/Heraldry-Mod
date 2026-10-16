@@ -15,7 +15,7 @@ namespace ValheimHeraldryMod.Heraldry
     ///         <item>the rest (its pure colour) in red, yellow and blue, converted from light mixing (RGB) to paint
     ///         mixing (RYB), so or is yellow and vert is half blue, half yellow.</item>
     ///     </list>
-    ///     Each tincture is paid once, however much of the arms it covers. Furs pay for both their colours, proper
+    ///     Each tincture is paid once, however much of the arms it covers. Furs pay for both their colours, a tartan for each colour in its threadcount, proper
     ///     costs nothing. When the total passes <c>maxTotal</c>, every paint is scaled down by the same factor.
     /// </summary>
     public static class PaintCost
@@ -173,6 +173,12 @@ namespace ValheimHeraldryMod.Heraldry
                     return;
                 case TinctureKind.Hex:
                     colours[t.Hex.ToString()] = new[] { t.Hex.R / 255.0, t.Hex.G / 255.0, t.Hex.B / 255.0 };
+                    return;
+                case TinctureKind.Tartan:
+                    // Every colour in the threadcount, each paid once like a tincture
+                    if (t.Sett != null)
+                        foreach (var st in t.Sett.Stripes)
+                            colours[st.Colour.ToString()] = new[] { st.Colour.R / 255.0, st.Colour.G / 255.0, st.Colour.B / 255.0 };
                     return;
                 case TinctureKind.Fur:
                     if (Furs.TryGetValue(t.Name, out var parts))
