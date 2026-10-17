@@ -1,4 +1,6 @@
-## Unreleased
+## Version 1.1.1
+- Fix: buttons and drop-downs in the blazon editor were hard to click (text labels were catching clicks meant
+  for the controls under them, most of all the new pattern picker).
 - Tagged faces (for other modders): up to four patterns per item or piece (`ValheimHeraldryMod_Face_1` … `_4`,
   unnumbered = 1; centre points numbered the same way), each with a full copy of its arms on every part that
   carries its number. The editor gets a pattern picker (greyed out when there's only one); each pattern is painted
