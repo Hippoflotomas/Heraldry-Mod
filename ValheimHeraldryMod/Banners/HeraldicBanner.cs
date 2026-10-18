@@ -27,6 +27,13 @@ namespace ValheimHeraldryMod.Banners
         /// <summary>Fraction of the cloth's height, from the top, hidden by the beam it hangs from.</summary>
         public float m_hiddenTop;
 
+        /// <summary>
+        ///     Tall cloths spread their charges down the cloth; wide ones (the drape) keep them together like a shield,
+        ///     the same rule as tagged pieces.
+        /// </summary>
+        public Heraldry.FieldRenderer.Arrangement Arrangement =>
+            m_widthOverHeight < 0.75f ? Heraldry.FieldRenderer.Arrangement.Spread : Heraldry.FieldRenderer.Arrangement.Compact;
+
         private ZNetView nview;
         private readonly List<Material> materials = new List<Material>();
         private uint lastRevision = uint.MaxValue;
@@ -102,13 +109,18 @@ namespace ValheimHeraldryMod.Banners
             }
 
             string text = BlazonTextureCache.Normalise(zdo?.GetString(BlazonZdoKey, "") ?? "");
-            int height = HeraldryConfig.EffectiveBannerResolution();
-            int width = Mathf.Max(16, Mathf.RoundToInt(height * m_widthOverHeight));
+            // The longer side gets the resolution (a wide drape would otherwise be three times as wide)
+            int longest = HeraldryConfig.EffectiveBannerResolution();
+            int height = m_widthOverHeight <= 1f ? longest : Mathf.Max(16, Mathf.RoundToInt(longest / m_widthOverHeight));
+            int width = m_widthOverHeight <= 1f ? Mathf.Max(16, Mathf.RoundToInt(longest * m_widthOverHeight)) : longest;
 
             if (BlazonTextureCache.KeyFor(m_shapeId, text, width, height) == cacheKey)
                 return;
 
-            var shape = new BlazonTextureCache.Shape { Id = m_shapeId, UV = m_outlineUV, Triangles = m_outlineTriangles, HiddenTop = m_hiddenTop };
+            var shape = new BlazonTextureCache.Shape
+            {
+                Id = m_shapeId, UV = m_outlineUV, Triangles = m_outlineTriangles, HiddenTop = m_hiddenTop, Arrangement = Arrangement,
+            };
             var tex = BlazonTextureCache.Acquire(text, width, height, shape, out string newKey);
             BlazonTextureCache.Release(cacheKey);   // after Acquire, so an unchanged texture isn't destroyed and rebuilt
             cacheKey = newKey;

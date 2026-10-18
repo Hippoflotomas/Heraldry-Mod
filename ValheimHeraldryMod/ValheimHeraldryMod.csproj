@@ -80,6 +80,10 @@
     <EmbeddedResource Include="Art\HeraldTable.hmesh">
       <LogicalName>ValheimHeraldryMod.HeraldTable.hmesh</LogicalName>
     </EmbeddedResource>
+    <!-- The mod's own icon, as a badge on the heraldic copies of vanilla pieces (Banners/VanillaCopies.cs) -->
+    <EmbeddedResource Include="Package\icon.png">
+      <LogicalName>ValheimHeraldryMod.ModIcon.png</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Art\Banner Bump Map.png">
       <LogicalName>ValheimHeraldryMod.ClothNormal.png</LogicalName>
     </EmbeddedResource>

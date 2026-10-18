@@ -1,3 +1,12 @@
+## Version 1.2.0
+Feature complete.
+- Three more heraldic cloths, built from the vanilla hanging cloths: the heraldic curtain, the narrow heraldic
+  curtain and the wide heraldic drape. Edited in place like the hanging banner.
+- The build cost and crafting station of the heraldic banner and cloths are server settings (section `Recipes`,
+  admin-only; defaults are the vanilla recipes).
+- Their hammer-menu icons carry this mod's icon in the corner, so they're easy to tell from the vanilla pieces.
+- Wide cloths keep their charges together (as on a shield) and get the full resolution on their long side.
+
 ## Version 1.1.1
 - Fix: buttons and drop-downs in the blazon editor were hard to click (text labels were catching clicks meant
   for the controls under them, most of all the new pattern picker).

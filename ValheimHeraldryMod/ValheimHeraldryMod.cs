@@ -13,7 +13,7 @@ namespace ValheimHeraldryMod
     {
         public const string PluginGUID = "com.hippotech.valheimheraldrymod";
         public const string PluginName = "Valheim Heraldry Mod";
-        public const string PluginVersion = "1.1.1";
+        public const string PluginVersion = "1.2.0";
 
         // https://valheim-modding.github.io/Jotunn/tutorials/localization.html
         /// <summary>The plugin, for coroutines.</summary>

@@ -8,19 +8,21 @@ using UnityEngine;
 namespace ValheimHeraldryMod.Banners
 {
     /// <summary>
-    ///     Registers the heraldic banner pieces. The vanilla hanging banner is a HeraldicBanner; the large standard
-    ///     (StandardLarge.cs) is painted through the tagged-piece path instead.
+    ///     Registers the heraldic banner pieces. Vanilla cloth pieces (the hanging banner and the three hanging cloths,
+    ///     2026-10-18) are HeraldicBanners, set up exactly as BannerShare does: a clone of the vanilla piece with every
+    ///     cloth re-projected flat onto one 0..1 image (ClothUV), keeping the vanilla recipe and station. The large
+    ///     standard (StandardLarge.cs) is painted through the tagged-piece path instead.
     ///     One piece per banner shape: what's painted on it is per instance, not per prefab.
     /// </summary>
     internal static class BannerRegistry
     {
         public const string ClothShaderName = "Custom/Vegetation";
-        private const string VanillaHangingBanner = "piece_banner01";
         public const string Category = "Heraldry";
 
         public static void Init()
         {
             PrefabManager.OnVanillaPrefabsAvailable += Register;
+            VanillaCopies.Init();
         }
 
         private static void Register()
@@ -28,13 +30,14 @@ namespace ValheimHeraldryMod.Banners
             // Fires every time the main menu loads; Jotunn keeps our pieces alive, so register once.
             PrefabManager.OnVanillaPrefabsAvailable -= Register;
 
-            AddBanner("ValheimHeraldryMod_BannerHanging", VanillaHangingBanner, "Heraldic banner (hanging)",
-                "A plain cloth banner. Write a blazon on it and every viewer sees the arms painted.");
+            // The hanging banner and the hanging cloths (BannerShare's shapes: 2:5, 1:2, about 1:5, about 3:1)
+            foreach (var copy in VanillaCopies.All) AddBanner(copy);
             StandardLarge.Register();
         }
 
-        private static void AddBanner(string prefabName, string source, string displayName, string description)
+        private static void AddBanner(VanillaCopies.Copy copy)
         {
+            string prefabName = copy.Prefab, source = copy.Source, displayName = copy.Name, description = copy.Description;
             var prefab = PrefabManager.Instance.CreateClonedPrefab(prefabName, source);
             if (prefab == null)
             {
@@ -68,14 +71,19 @@ namespace ValheimHeraldryMod.Banners
             CollectOutline(prefab, banner);
             banner.m_hiddenTop = HiddenTop(prefab);
 
-            // Requirements left empty = keep the vanilla banner's recipe and crafting station.
+            // Recipe and station from the config (defaults = vanilla); the vanilla icon with the mod's badge
             var config = new PieceConfig
             {
                 Name = displayName,
                 Description = description,
                 PieceTable = PieceTables.Hammer,
                 Category = Category,
+                CraftingStation = VanillaCopies.StationOf(copy),
+                Requirements = VanillaCopies.Requirements(copy),
             };
+            var vanillaIcon = prefab.GetComponent<Piece>()?.m_icon;
+            var icon = VanillaCopies.Badged(vanillaIcon, prefabName);
+            if (icon != null) config.Icon = icon;
             PieceManager.Instance.AddPiece(new CustomPiece(prefab, false, config));
 
             Jotunn.Logger.LogDebug($"[Heraldry] Registered '{prefabName}' from '{source}': {cloths} cloth mesh(es), " +

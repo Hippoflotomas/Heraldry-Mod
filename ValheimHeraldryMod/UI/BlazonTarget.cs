@@ -55,14 +55,14 @@ namespace ValheimHeraldryMod.UI
         private readonly HeraldicBanner banner;
         public BannerTarget(HeraldicBanner banner) { this.banner = banner; }
 
-        public string Title => "Heraldic banner";
+        public string Title => banner.m_displayName;
         public string ApplyLabel => "Apply";
         public bool IsAlive => banner != null;
         public float Aspect => banner.m_widthOverHeight;
         public float[] OutlineUV => banner.m_outlineUV;
         public int[] OutlineTriangles => banner.m_outlineTriangles;
         public float HiddenTop => banner.m_hiddenTop;
-        public Heraldry.FieldRenderer.Arrangement Arrangement => Heraldry.FieldRenderer.Arrangement.Spread;
+        public Heraldry.FieldRenderer.Arrangement Arrangement => banner.Arrangement;
         public float CentreU => -1f;
         public float CentreV => -1f;
         public IList<string> Choices => null;

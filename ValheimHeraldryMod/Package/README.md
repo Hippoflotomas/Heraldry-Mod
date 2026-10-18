@@ -6,8 +6,8 @@ player draws the arms from that text. No images are sent between players, except
 players add themselves.
 
 ## Features
-- **Heraldic banners**: a hanging banner and a tall free-standing large standard. Walk up, press **E** and
-  write your arms.
+- **Heraldic banners**: a hanging banner, a tall free-standing large standard, and three hanging cloths (a
+  curtain, a narrow curtain and a wide drape). Walk up, press **E** and write your arms.
 - **Painted shields**: paint any vanilla shield at the **herald's table**. The arms show in your hand, on your
   back, on the ground, on item and armour stands, and on the inventory icon. Quality and enchantments are kept.
 - **Heraldic tabard**: crafted and painted at the herald's table. The front carries the full arms; the back
@@ -35,7 +35,8 @@ players add themselves.
    near a workbench. It needs a roof.
 2. At the table, **E** opens crafting (paints and the tabard), and **Shift+E** paints a shield or tabard
    from your inventory.
-3. Build a **heraldic banner** or a **large standard** from the Heraldry tab and press **E** on it.
+3. Build a **heraldic banner**, **large standard**, **curtain** or **drape** from the Heraldry tab and press
+   **E** on it.
 4. New to heraldry? Stay on the **Basic** tab. Each choice shows its blazon underneath, and you can carry it
    over to **Advanced** to keep editing.
 
@@ -168,6 +169,8 @@ Server settings are synced to every client and only admins can change them. Some
 - `ExcludeShields`: shields that can't be painted (default `ShieldShare_`).
 - `ExcludeGameIcons`: game items that can't be charges, or `all`.
 - Charge size and upload limits.
+- Section `Recipes`: build cost and crafting station of the heraldic banner, curtains and drape (defaults are the
+  vanilla recipes).
 
 Client settings include `BannerResolution`, `AutoGetServerCharges`, `ShareCharges` and the key used to edit
 tagged pieces (`TaggedPieceEditModifier` + `TaggedPieceEditKey`, default Shift+E).
@@ -187,10 +190,9 @@ do nothing. The full spec is in
 [ModderGuide.md](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md).
 
 ## Known limitations
-- Some charges are recognised but have no drawing yet (lion, eagle, dragon, raven, hammer, fleur-de-lis,
-  martlet, ...). They show the placeholder roundel. Use your own picture in brackets instead.
+- Some charges are recognised but have no drawing of their own (lion, eagle, dragon, raven, hammer,
+  fleur-de-lis, martlet, ...). They show the placeholder roundel. Use your own picture in brackets instead.
 - Full marshalling (several coats of arms quartered into one) isn't supported.
-- Controllers aren't supported in the blazon window yet.
-- The heater shield and more banner shapes are planned.
+- Controllers aren't supported in the blazon window.
 
 Source: [github.com/Hippoflotomas/Heraldry-Mod](https://github.com/Hippoflotomas/Heraldry-Mod)

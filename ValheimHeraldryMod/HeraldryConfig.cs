@@ -174,6 +174,9 @@ namespace ValheimHeraldryMod
             }
             paintRecipeAmount.SettingChanged += (_, __) => PaintSettingsChanged?.Invoke();
 
+            // Build costs of the heraldic copies of vanilla cloth pieces (2026-10-18)
+            Banners.VanillaCopies.BindConfig(config);
+
             allowSecretBlazons = config.Bind("Server", "AllowSecretBlazons", true,
                 new ConfigDescription("A few secret words stand for special designs. Off = they're just text that isn't blazon.",
                     null, new ConfigurationManagerAttributes { IsAdminOnly = true }));

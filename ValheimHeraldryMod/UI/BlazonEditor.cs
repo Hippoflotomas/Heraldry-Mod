@@ -313,10 +313,11 @@ namespace ValheimHeraldryMod.UI
         /// <summary>The preview's size and outline, from the target (for the table: the chosen shield's face).</summary>
         private void SetupShape()
         {
-            aspect = Mathf.Clamp(target.Aspect, 0.2f, 2f);
-            // Preview sized to the banner's shape, with its real outline
-            previewH = 400;
-            previewW = Mathf.Max(16, Mathf.RoundToInt(previewH * aspect));
+            aspect = Mathf.Clamp(target.Aspect, 0.15f, 4f);
+            // Preview sized to the banner's shape, with its real outline; the longer side 400 px (a wide drape is
+            // wider than tall)
+            previewH = aspect <= 1f ? 400 : Mathf.Max(16, Mathf.RoundToInt(400 / aspect));
+            previewW = aspect <= 1f ? Mathf.Max(16, Mathf.RoundToInt(previewH * aspect)) : 400;
             float shownH = PreviewH, shownW = shownH * aspect;
             if (shownW > 230) { shownW = 230; shownH = shownW / aspect; }
             Place(preview.rectTransform, PreviewX + (230 - shownW) / 2, PreviewY, shownW, shownH);
