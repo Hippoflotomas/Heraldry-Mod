@@ -49,6 +49,54 @@ namespace ValheimHeraldryMod.UI
         string Apply(string text);
     }
 
+    /// <summary>
+    ///     Arms that aren't on anything yet (HeraldryAPI.OpenEditorForText, 2026-10-25): another mod opens the editor,
+    ///     the player writes arms, and Apply hands them back. Nothing is painted, so nothing costs paint.
+    /// </summary>
+    internal sealed class TextTarget : IBlazonTarget
+    {
+        private readonly string title, text;
+        private readonly float aspect;
+        private readonly System.Action<string> onApply;
+
+        public TextTarget(string title, string text, float aspect, System.Action<string> onApply)
+        {
+            this.title = string.IsNullOrWhiteSpace(title) ? "Arms" : title;
+            this.text = text ?? "";
+            this.aspect = aspect > 0f ? aspect : 0.83f;
+            this.onApply = onApply;
+        }
+
+        public string Title => title;
+        public string ApplyLabel => "Apply";
+        public bool IsAlive => true;
+        public float Aspect => aspect;
+        public float[] OutlineUV => null; // the whole rectangle
+        public int[] OutlineTriangles => null;
+        public float HiddenTop => 0f;
+        public Heraldry.FieldRenderer.Arrangement Arrangement =>
+            aspect < 0.75f ? Heraldry.FieldRenderer.Arrangement.Spread : Heraldry.FieldRenderer.Arrangement.Compact;
+        public float CentreU => -1f;
+        public float CentreV => -1f;
+        public IList<string> Choices => null;
+        public IList<UnityEngine.Sprite> ChoiceIcons => null;
+        public int Chosen => -1;
+        public string Choose(int index) => GetText();
+        public IList<int> Patterns => null;
+        public int Pattern => 1;
+        public string ChoosePattern(int number) => GetText();
+        public string Blocked => null;
+        public bool CostsPaint => false;
+        public string GetText() => text;
+
+        public string Apply(string newText)
+        {
+            try { onApply?.Invoke(newText ?? ""); }
+            catch (System.Exception ex) { Jotunn.Logger.LogWarning($"[Heraldry API] The mod that opened the editor failed on Apply: {ex.Message}"); }
+            return null;
+        }
+    }
+
     /// <summary>A heraldic banner: edited in place, the blazon in its ZDO.</summary>
     internal sealed class BannerTarget : IBlazonTarget
     {

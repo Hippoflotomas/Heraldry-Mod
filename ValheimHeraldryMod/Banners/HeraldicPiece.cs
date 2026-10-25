@@ -63,10 +63,14 @@ namespace ValheimHeraldryMod.Banners
 
         internal bool CanEdit(bool flash) => PrivateArea.CheckAccess(transform.position, 0f, flash, false);
 
-        internal void OpenEditor()
+        /// <summary>Opens the editor on this piece (ward access needed); <paramref name="pattern"/> 0 = its first pattern.</summary>
+        internal bool OpenEditor(int pattern = 0)
         {
-            if (!CanEdit(true)) return;
-            UI.BlazonEditor.Open(new PieceTarget(this, DisplayName()));
+            if (painter == null || !CanEdit(true)) return false;
+            var target = new PieceTarget(this, DisplayName());
+            if (pattern > 0 && Numbers.Contains(pattern)) target.ChoosePattern(pattern);
+            UI.BlazonEditor.Open(target);
+            return true;
         }
 
         // ------------------------------------------------------------ Hoverable / Interactable (when the piece has none of its own)
@@ -213,6 +217,9 @@ namespace ValheimHeraldryMod.Banners
     internal static class HeraldicPiecePatches
     {
         private static readonly Dictionary<string, bool> Tagged = new Dictionary<string, bool>();
+
+        /// <summary>Scan this prefab again next time (another mod registered a face on it through the API).</summary>
+        internal static void Forget(string prefabName) => Tagged.Remove(prefabName);
 
         [HarmonyPatch(typeof(Piece), "Awake")]
         [HarmonyPostfix]

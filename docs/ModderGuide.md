@@ -3,6 +3,7 @@
 Valheim Heraldry Mod paints coats of arms (written as blazons) onto shields and build pieces. Your own mod's
 shields and pieces can take arms too, with no code and no dependency on this mod: tag a face in your model, and
 when Heraldry Mod is installed it finds the face and paints on it. Without Heraldry Mod the tag does nothing.
+If you'd rather do it from code, or want to read or write arms, see [the API](#from-code-the-api-heraldry-mod-140-and-later).
 
 ## What you add (a few minutes in Blender)
 
@@ -91,6 +92,79 @@ All names are matched exactly (capitals matter). Unity's own " (Instance)" and "
   are dropped. With `ValheimHeraldryMod_UseUVs` your mesh is used as it is.
 - The painted face uses a copy of the face's own material with the arms as its main texture, so use a shader with
   a `_MainTex` slot (Valheim's own shaders do). If yours has none, a plain wood material is used.
+
+## From code: the API (Heraldry Mod 1.4.0 and later)
+
+Everything above also works from code, plus a few things tags can't do: reading and writing arms, suggesting a
+guild's arms, getting the arms as a texture, and opening the editor. It's a public static class,
+`ValheimHeraldryMod.HeraldryAPI`, meant to be called **by reflection**, so your mod needs no reference to Heraldry
+Mod and still works when it isn't installed.
+
+**The easy way:** copy [`HeraldryBridge.cs`](HeraldryBridge.cs) into your project and change its namespace. It does
+the reflection once and gives you normal methods; without Heraldry Mod every call quietly returns false, "" or
+null. Add a soft dependency so Heraldry Mod loads first when it's there:
+
+```csharp
+[BepInDependency("com.hippotech.valheimheraldrymod", BepInDependency.DependencyFlags.SoftDependency)]
+public class MyMod : BaseUnityPlugin
+{
+    private void Awake()
+    {
+        if (!HeraldryBridge.Available) return;
+        // A shield: the item's prefab, path from its root. A build piece: the piece's prefab.
+        HeraldryBridge.RegisterFace("MyKiteShield", "attach/model/front", 1);
+        HeraldryBridge.RegisterFace("MySailShip", "ship/visual/sail", 1);
+        // A guild's arms, offered in the editor to its members
+        HeraldryBridge.RegisterArmsProvider("Guild arms", player => MyGuilds.ArmsOf(player));
+    }
+}
+```
+
+| Method | What it does |
+|---|---|
+| `RegisterFace(prefab, path, pattern)` | The part at `path` (from the prefab's root; `""` = the root) is painted as pattern 1–4, laid out flat. The same as naming it `ValheimHeraldryMod_Face_n`. |
+| `RegisterFaceAdvanced(prefab, path, pattern, slot, centrePath, useUVs)` | With every option: `slot` -1 = the whole object, or one material slot; `centrePath` an empty marking the centre, or null; `useUVs` = use the part's own UV0 (all or nothing per prefab, as with the tag). |
+| `GetPiecePatterns(piece)` / `GetItemPatterns(item)` | Which patterns a placed piece or an item can carry; empty if none. |
+| `GetPieceBlazon(piece, pattern)` / `SetPieceBlazon(piece, blazon, pattern)` | Read or write the arms on a placed piece ("" takes them off). |
+| `GetItemBlazon(item, pattern)` / `SetItemBlazon(item, blazon, pattern)` | The same for a shield or tabard. |
+| `CheckBlazon(blazon)` | Null if the arms can be applied here, else the first problem in plain words. |
+| `DisplayBlazon(blazon)` | The arms as players see them (see "Stored text" below). |
+| `ExpandBlazon(blazon)` | A secret code becomes the blazon it stands for; anything else comes back as it is. |
+| `RegisterArmsProvider(label, Func<Player, string>)` | Each time the editor opens, your function gets the local player and returns a blazon (or null). It's offered at the top of the saved blazons under `label`; the player can load it, change it and apply it. |
+| `RenderBlazon(blazon, width, height)` / `ReleaseBlazonTexture(texture)` | The arms as a texture, for things the face route can't paint: skinned meshes, UI, map markers. |
+| `OpenEditor(piece, pattern)` | The editor on a placed piece, as if the player had pressed E (ward and paint as normal; pattern 0 = the first). |
+| `OpenEditorForText(title, blazon, aspect, Action<string>)` | The editor on arms that aren't on anything (a guild leader setting the guild's arms): Apply hands you the arms. Cancel calls nothing. `aspect` is width over height, 0 = a shield shape. |
+| `ApiVersion`, `ModVersion` | The API's version (1) and Heraldry Mod's. |
+
+**Rules you can count on:**
+- **Writes cost no paint and check no ward.** A player can't call the API, so your mod decides who may change
+  what. The server's limits (length, complexity) still apply: arms over them are refused.
+- **Items live with whoever holds them.** Call `SetItemBlazon` on the holding player's own client (their inventory).
+  Pieces can be written from any client or the server; every client sees the change within about a second.
+- **Registration is local.** Call `RegisterFace` and `RegisterArmsProvider` on every client (your plugin's
+  Awake is the place), before the world loads. Pieces placed before a face was registered pick it up when they're next
+  loaded.
+- **Tags win.** On an object carrying `ValheimHeraldryMod_Face` tags, a registration for the same object is ignored.
+- **Textures are shared.** The same arms at the same size give the same texture. Don't destroy it or change its
+  pixels: release it once for every `RenderBlazon`. It's drawn in the background, showing the field's colour at first
+  and the full arms a frame or two later in the same texture (a material using it updates by itself). On a dedicated
+  server it's null.
+- **Nothing throws.** Failures return false, "", null or an empty array, with the reason in the log
+  (`[Heraldry API] …`).
+- **Only additions.** Every method has its own name (no overloads, so `GetMethod(name)` is never ambiguous) and
+  uses plain types. Once a method has shipped it never changes; new ones raise `ApiVersion`.
+
+**Stored text.** Arms come out exactly as stored: the text players write, sometimes followed by a hidden tail
+(after the invisible character U+001F) naming the exact picture of each `[bracketed]` charge. Pass that text back
+as it is to copy arms exactly, and use `DisplayBlazon` to show it to players.
+
+**Without the bridge**, look the type up yourself:
+
+```csharp
+var api = AppDomain.CurrentDomain.GetAssemblies()
+    .FirstOrDefault(a => a.GetName().Name == "ValheimHeraldryMod")?.GetType("ValheimHeraldryMod.HeraldryAPI");
+api?.GetMethod("RegisterFace")?.Invoke(null, new object[] { "MyKiteShield", "attach/model/front", 1 });
+```
 
 ## Checklist
 

@@ -461,8 +461,46 @@ namespace ValheimHeraldryMod.Shields
             get { var n = Numbers; return n.Length == 0 || n.Contains(1) ? 1 : n[0]; }
         }
 
-        /// <summary>The tags on this object and its children: (renderer, slot or -1, pattern number).</summary>
-        public static List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>> Scan(GameObject root, out bool useUVs)
+        /// <summary>
+        ///     The tags on this object and its children, then the faces another mod registered for its prefab through the
+        ///     API: (renderer, slot or -1, pattern number). A renderer that carries tags keeps them; a registration on it
+        ///     is ignored. <paramref name="prefabName"/>: the prefab, when the object's own name doesn't say (a shield
+        ///     in hand is the prefab's "attach" child).
+        /// </summary>
+        public static List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>> Scan(GameObject root, out bool useUVs, string prefabName = null)
+        {
+            var hits = ScanTags(root, out useUVs);
+            if (root == null) return hits;
+            string prefab = prefabName ?? Utils.GetPrefabName(root);
+            var registered = Api.ApiRegistry.For(prefab);
+            if (registered == null) return hits;
+            if (registered.UseUVs) useUVs = true;
+            foreach (var f in registered.Faces)
+            {
+                var t = Api.ApiRegistry.Find(root.transform, f.Path);
+                var r = t != null ? t.GetComponent<MeshRenderer>() : null;
+                if (r == null || r.GetComponent<MeshFilter>() == null)
+                {
+                    // A shield shown in hand or on the back is only part of its prefab, so a missing path is only worth a
+                    // warning on the whole prefab or a placed piece (scanned under their own names)
+                    if (t == null && prefabName == null)
+                        Api.ApiRegistry.WarnOnce($"'{prefab}': no object at '{f.Path}'.");
+                    else if (t != null)
+                        Api.ApiRegistry.WarnOnce($"'{prefab}': '{f.Path}' has no MeshRenderer and MeshFilter (skinned meshes can't be painted this way; RenderBlazon can help).");
+                    continue;
+                }
+                if (hits.Any(h => h.Key == r)) continue; // its tags win
+                if (f.Slot >= 0 && f.Slot >= r.sharedMaterials.Length)
+                {
+                    Api.ApiRegistry.WarnOnce($"'{prefab}': '{f.Path}' has no material slot {f.Slot}.");
+                    continue;
+                }
+                hits.Add(new KeyValuePair<MeshRenderer, KeyValuePair<int, int>>(r, new KeyValuePair<int, int>(f.Slot, f.Number)));
+            }
+            return hits;
+        }
+
+        private static List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>> ScanTags(GameObject root, out bool useUVs)
         {
             var hits = new List<KeyValuePair<MeshRenderer, KeyValuePair<int, int>>>();
             useUVs = false;
@@ -486,14 +524,23 @@ namespace ValheimHeraldryMod.Shields
         }
 
         /// <summary>This object's tagged parts, prepared (meshes cached), or null if it has none.</summary>
-        public static TaggedModel For(GameObject root)
+        public static TaggedModel For(GameObject root, string prefabName = null)
         {
-            var hits = Scan(root, out bool useUVs);
+            var hits = Scan(root, out bool useUVs, prefabName);
             if (hits.Count == 0) return null;
-            string owner = Utils.GetPrefabName(root);
+            string owner = prefabName ?? Utils.GetPrefabName(root);
             var marks = root.GetComponentsInChildren<Transform>(true)
                 .Select(t => new KeyValuePair<int, Transform>(TaggedFace.NumberOf(TaggedFace.Clean(t.name), TaggedFace.CentreTag), t))
                 .Where(kv => kv.Key > 0).ToList();
+            // Centres registered through the API come after the tagged ones (a tag wins)
+            var registered = Api.ApiRegistry.For(owner);
+            if (registered != null)
+                foreach (var f in registered.Faces)
+                {
+                    if (string.IsNullOrEmpty(f.CentrePath)) continue;
+                    var c = Api.ApiRegistry.Find(root.transform, f.CentrePath);
+                    if (c != null) marks.Add(new KeyValuePair<int, Transform>(f.Number, c));
+                }
             Transform CentreFor(int n) => marks.FirstOrDefault(kv => kv.Key == n).Value;
 
             var model = new TaggedModel { UseUVs = useUVs };
@@ -516,6 +563,13 @@ namespace ValheimHeraldryMod.Shields
             m = For(prefab);
             Prefabs[prefab.name] = m;
             return m;
+        }
+
+        /// <summary>Drops what's cached for a prefab (another mod registered a face on it after it was scanned).</summary>
+        public static void Forget(string prefabName)
+        {
+            Prefabs.Remove(prefabName);
+            Tagged.Remove(prefabName);
         }
 
         /// <summary>True if this prefab carries a tagged face (scanned once per prefab, nothing built).</summary>
@@ -554,9 +608,9 @@ namespace ValheimHeraldryMod.Shields
         private readonly List<RendererState> states = new List<RendererState>();
         public TaggedModel Model { get; private set; }
 
-        public static TaggedFacePainter On(GameObject root)
+        public static TaggedFacePainter On(GameObject root, string prefabName = null)
         {
-            var model = TaggedModel.For(root);
+            var model = TaggedModel.For(root, prefabName);
             if (model == null) return null;
             var p = new TaggedFacePainter { Model = model };
             foreach (var kv in model.Renderers)

@@ -955,6 +955,26 @@ namespace ValheimHeraldryMod.UI
             foreach (Transform child in savedContent) Destroy(child.gameObject);
             pendingDelete = null;
             var gui = GUIManager.Instance;
+
+            // Arms another mod suggests (a guild's, through the API), above the player's own saved ones
+            foreach (var kv in Api.ApiRegistry.SuggestedArms())
+            {
+                string label = kv.Key, arms = kv.Value;
+                var suggested = gui.CreateButton($"<color=#ffcc40>{label}</color>   <color=#a0a0a0>{Shorten(BlazonText.Visible(arms), 60)}</color>",
+                    savedContent, Vector2.zero, Vector2.zero, Vector2.zero);
+                var text = suggested.GetComponentInChildren<Text>();
+                text.supportRichText = true;
+                text.alignment = TextAnchor.MiddleLeft;
+                text.fontSize = 15;
+                suggested.AddComponent<LayoutElement>().preferredHeight = 30;
+                suggested.GetComponent<Button>().onClick.AddListener(() =>
+                {
+                    if (basicMode) SetMode(false, true);
+                    Load(arms);
+                    status.text = $"Loaded '{label}'. Apply to paint it.";
+                });
+            }
+
             foreach (var saved in SavedBlazons.All)
             {
                 var row = new GameObject("Row", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));

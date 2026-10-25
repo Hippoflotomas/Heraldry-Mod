@@ -1,3 +1,10 @@
+## Unreleased
+### New
+- **An API for other mods.** Called by reflection, so Heraldry Mod stays an optional dependency for them. Other mods
+  can register paintable faces from code, read and write the arms on placed pieces, shields and tabards (no paint
+  cost; the server's limits still apply), offer a guild's arms at the top of the saved blazons, get arms drawn as a
+  texture, and open the blazon editor. A copy-in `HeraldryBridge.cs` and a guide are in the repository's docs.
+
 ## Version 1.3.0
 ### New
 - **Fretty and fretted**: `Argent, fretty gules` covers the whole field with an interlaced trellis;

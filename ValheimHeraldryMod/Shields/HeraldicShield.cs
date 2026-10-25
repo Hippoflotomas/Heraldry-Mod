@@ -65,7 +65,7 @@ namespace ValheimHeraldryMod.Shields
             if (!taggedChecked)
             {
                 taggedChecked = true;
-                tagged = TaggedFacePainter.On(gameObject);
+                tagged = TaggedFacePainter.On(gameObject, prefabName);
             }
             if (tagged != null)
             {
