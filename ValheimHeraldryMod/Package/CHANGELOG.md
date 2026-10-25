@@ -1,3 +1,19 @@
+## Version 1.3.0
+### New
+- **Fretty and fretted**: `Argent, fretty gules` covers the whole field with an interlaced trellis;
+  `fretted`/`fretty` after any ordinary or charge does the same to it (`Argent, a fess azure fretted or`).
+  The trellis colour costs paint like any other.
+- **Heraldry guide in the compendium** (open the inventory, then the compendium): eight pages on writing a blazon,
+  colours, ordinaries, charges, scrolls and mottos, tartan, your own charges, and the charges the mod draws, all
+  with examples. Client setting `CompendiumPages` hides them.
+- **Hugin** has something to say the first time you come near a herald's table.
+
+### Fixed
+- **"Over all" did nothing on ordinaries.** It was accepted but ignored, so in
+  `Azure, three mullets or, a bend gules over all` the mullets were drawn on top of the bend. Now an ordinary
+  "over all" (before or after it: `..., over all a bend gules`) is laid on top of everything, and the charges are
+  arranged as if it weren't there. "Over all" with nothing to apply to is now marked as an error.
+
 ## Version 1.2.0
 Feature complete.
 - Three more heraldic cloths, built from the vanilla hanging cloths: the heraldic curtain, the narrow heraldic

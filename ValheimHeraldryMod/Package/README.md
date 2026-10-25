@@ -38,7 +38,8 @@ players add themselves.
 3. Build a **heraldic banner**, **large standard**, **curtain** or **drape** from the Heraldry tab and press
    **E** on it.
 4. New to heraldry? Stay on the **Basic** tab. Each choice shows its blazon underneath, and you can carry it
-   over to **Advanced** to keep editing.
+   over to **Advanced** to keep editing. The **compendium** has a heraldry guide too: eight pages on writing a
+   blazon, with examples.
 
 [![Making a coat of arms in Basic mode](https://img.youtube.com/vi/0VFxfnxElqc/hqdefault.jpg)](https://youtu.be/0VFxfnxElqc)
 
@@ -71,6 +72,7 @@ tab is where you write it yourself, with the preview and the underlines guiding 
 **Tinctures**: or (gold), argent (silver), gules (red), azure (blue), sable (black), vert (green), purpure
 (purple), tenné, sanguine, murrey; furs ermine, ermines, erminois, pean, vair, counter-vair, potent; any
 colour as a hex code (`#2a6041`). Plain names (red, gold, ...) are understood but marked as not proper blazon.
+**Fretty** (an interlaced trellis) goes on any of them: `Argent, fretty gules`, `Argent, a fess azure fretted or`.
 
 **Field divisions**: per pale, per fess, per bend (sinister), per chevron, per saltire, quarterly; patterns
 paly, barry, bendy, chequy, lozengy, gyronny (optionally "of eight" and so on).

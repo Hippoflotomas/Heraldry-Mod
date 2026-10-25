@@ -43,7 +43,7 @@ namespace ValheimHeraldryMod.Heraldry
         public override string ToString() => $"{Word}:{Status}{(Message == null ? "" : " (" + Message + ")")}";
     }
 
-    public enum TinctureKind { Metal, Colour, Stain, Fur, Hex, Proper, Counterchanged, Tartan }
+    public enum TinctureKind { Metal, Colour, Stain, Fur, Hex, Proper, Counterchanged, Tartan, Fretty }
 
     public sealed class Tincture
     {
@@ -54,6 +54,13 @@ namespace ValheimHeraldryMod.Heraldry
         public Rgba Hex;
         /// <summary>A tartan's sett (Kind = Tartan only).</summary>
         public Sett Sett;
+        /// <summary>
+        ///     Fretty (Kind = Fretty, 2026-10-25): <see cref="Base"/> covered by an interlaced trellis of diagonal bands
+        ///     in <see cref="Fret"/> ("Argent, fretty gules"; "a fess azure fretted or").
+        /// </summary>
+        public Tincture Base, Fret;
+        /// <summary>Fretty on an ordinary or charge: a finer trellis than on a whole field.</summary>
+        public bool Fine;
 
         public override string ToString() => Name;
     }
@@ -106,6 +113,11 @@ namespace ValheimHeraldryMod.Heraldry
         public Inscription Inscription;
         /// <summary>Charges placed on this ordinary ("on a chief azure three mullets or").</summary>
         public List<Charge> Charges = new List<Charge>();
+        /// <summary>
+        ///     "a bend gules over all" / "over all a bend gules": laid on top of everything else, charges included.
+        ///     The charges are arranged as if it weren't there (2026-10-25).
+        /// </summary>
+        public bool OverAll;
     }
 
     /// <summary>
@@ -209,7 +221,7 @@ namespace ValheimHeraldryMod.Heraldry
             get
             {
                 int n = Field != null && (Field.Partition != PartitionKind.None || Field.Variation != VariationKind.None ||
-                                          Field.Tinctures.Exists(t => t != null && t.Kind == TinctureKind.Tartan)) ? 1 : 0;
+                                          Field.Tinctures.Exists(t => t != null && (t.Kind == TinctureKind.Tartan || t.Kind == TinctureKind.Fretty))) ? 1 : 0;
                 foreach (var o in Ordinaries)
                 {
                     n += Math.Max(1, o.Count);

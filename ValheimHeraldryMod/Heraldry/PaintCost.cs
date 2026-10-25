@@ -180,6 +180,10 @@ namespace ValheimHeraldryMod.Heraldry
                         foreach (var st in t.Sett.Stripes)
                             colours[st.Colour.ToString()] = new[] { st.Colour.R / 255.0, st.Colour.G / 255.0, st.Colour.B / 255.0 };
                     return;
+                case TinctureKind.Fretty:
+                    AddTincture(colours, t.Base);
+                    AddTincture(colours, t.Fret);
+                    return;
                 case TinctureKind.Fur:
                     if (Furs.TryGetValue(t.Name, out var parts))
                         foreach (var p in parts) colours[p] = Ideal[p];

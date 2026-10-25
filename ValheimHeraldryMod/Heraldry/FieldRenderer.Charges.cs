@@ -186,7 +186,7 @@ namespace ValheimHeraldryMod.Heraldry
             {
                 if (!Cloth(x, y)) return true;
                 foreach (var o in blazon.Ordinaries)
-                    if (o.Tincture != null && InsideOrdinary(o, x, y, o.Style.Fimbriation != null ? OrdinaryFimbriation * unit : 0))
+                    if (o.Tincture != null && !o.OverAll && InsideOrdinary(o, x, y, o.Style.Fimbriation != null ? OrdinaryFimbriation * unit : 0))
                         return true;
                 return false;
             });
@@ -194,7 +194,7 @@ namespace ValheimHeraldryMod.Heraldry
             {
                 if (!Cloth(x, y)) return true;
                 foreach (var o in blazon.Ordinaries)
-                    if (o.Tincture != null && (o.Kind == OrdinaryKind.Chief || o.Kind == OrdinaryKind.Bordure) &&
+                    if (o.Tincture != null && !o.OverAll && (o.Kind == OrdinaryKind.Chief || o.Kind == OrdinaryKind.Bordure) &&
                         InsideOrdinary(o, x, y, o.Style.Fimbriation != null ? OrdinaryFimbriation * unit : 0))
                         return true;
                 return false;

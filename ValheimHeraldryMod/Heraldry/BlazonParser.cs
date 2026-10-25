@@ -519,11 +519,32 @@ namespace ValheimHeraldryMod.Heraldry
                 return;
             }
 
-            // "over all" / "overall": a charge laid over the ordinaries, which is how unplaced charges are drawn anyway
+            // "over all" / "overall": what it follows ("a bend gules over all"), or with an object after it what comes
+            // next ("..., over all a bend gules"), lies on top of everything else. For an ordinary that changes the
+            // drawing (on top of the charges, and the charges ignore it); a charge is laid over the ordinaries anyway.
             if (w == "overall" || (w == "over" && Peek(1) == "all"))
             {
-                Take();
+                var overTok = Take();
                 if (w == "over") Take();
+                bool commaNext = CurTok != null && CurTok.AfterComma; // "a bend over all, three mullets": belongs to the bend
+                SkipFillers();
+                if (!AtEnd && !commaNext && StartsObject()) pendingOverAll = true;
+                else if (lastObject is Ordinary prev) prev.OverAll = true;
+                else if (lastObject == null) Mark(overTok, WordStatus.Wrong, "over all what? e.g. '..., a bend gules over all'");
+                return;
+            }
+
+            // "Argent, fretty gules" (a comma between): the field, or what was just named, is fretty
+            if (w == "fretty" || w == "fretted")
+            {
+                var ft = Take();
+                if (!TryTinctureCore(out var fret, false, false)) { Mark(ft, WordStatus.Wrong, "fretty with what? e.g. 'fretty gules'"); return; }
+                if (lastObject is Ordinary lo && lo.Tincture != null) lo.Tincture = MakeFretty(lo.Tincture, fret, true);
+                else if (lastObject is Charge lc && lc.Tincture != null && lc.Tincture.Kind != TinctureKind.Proper) lc.Tincture = MakeFretty(lc.Tincture, fret, true);
+                else if (lastObject == null && result.Field != null && result.Field.Tinctures.Count > 0)
+                    for (int i = 0; i < result.Field.Tinctures.Count; i++)
+                        result.Field.Tinctures[i] = MakeFretty(result.Field.Tinctures[i], fret, false);
+                else Mark(ft, WordStatus.Wrong, "fretty: nothing to cover here");
                 return;
             }
 
@@ -543,6 +564,17 @@ namespace ValheimHeraldryMod.Heraldry
         }
 
         private int[] pendingQuarters;
+        /// <summary>The ordinary or charge just finished, for a following "over all".</summary>
+        private object lastObject;
+        /// <summary>"over all" came before the object it's about.</summary>
+        private bool pendingOverAll;
+
+        /// <summary>Records a finished ordinary (an earlier "over all" applies to it).</summary>
+        private void Finished(Ordinary o)
+        {
+            if (pendingOverAll) { o.OverAll = true; pendingOverAll = false; }
+            lastObject = o;
+        }
 
         /// <summary>"in the first [and fourth] quarter[s]".</summary>
         private bool IsQuartersStart()
@@ -938,6 +970,7 @@ namespace ValheimHeraldryMod.Heraldry
                 ParseStyle(o.Style, beforeTincture: false);
                 OrdinaryInscription(o);
                 result.Ordinaries.Add(o);
+                Finished(o);
                 return o;
             }
             if (!TryTincture(out var t, allowProper: false, allowCounterchanged: true))
@@ -947,6 +980,7 @@ namespace ValheimHeraldryMod.Heraldry
                     // "a chevron between three mullets argent": the last tincture covers both
                     awaitingTincture.Add(o);
                     result.Ordinaries.Add(o);
+                    Finished(o);
                     return o;
                 }
                 Mark(nounTok, WordStatus.Wrong, "needs a tincture, e.g. 'a " + nounTok.Text + " or'");
@@ -956,6 +990,7 @@ namespace ValheimHeraldryMod.Heraldry
             ParseStyle(o.Style, beforeTincture: false);
             OrdinaryInscription(o);
             result.Ordinaries.Add(o);
+            Finished(o);
             return o;
         }
 
@@ -1220,6 +1255,8 @@ namespace ValheimHeraldryMod.Heraldry
             }
             result.Charges.Add(c);
             lastCharge = c;
+            lastObject = c;
+            pendingOverAll = false; // a charge over all: laid over the ordinaries, as it is anyway
             return c;
         }
 
@@ -1233,6 +1270,27 @@ namespace ValheimHeraldryMod.Heraldry
         ///     clearly belongs elsewhere; consumes and marks a word that is a near-miss tincture.
         /// </summary>
         private bool TryTincture(out Tincture t, bool allowProper, bool allowCounterchanged)
+        {
+            if (!TryTinctureCore(out t, allowProper, allowCounterchanged)) return false;
+            // "azure fretted or", "argent fretty gules": the tincture covered by an interlaced trellis
+            // (after a comma it's about everything before: "Per pale or and vert, fretty gules" - see ParseObject)
+            if ((Cur == "fretted" || Cur == "fretty") && !CurTok.AfterComma && t.Kind != TinctureKind.Proper && t.Kind != TinctureKind.Counterchanged)
+            {
+                var ft = Take();
+                if (TryTinctureCore(out var fret, false, false)) t = MakeFretty(t, fret, fine: result.Field != null);
+                else Mark(ft, WordStatus.Wrong, "fretted with what? e.g. 'fretted or'");
+            }
+            return true;
+        }
+
+        private static Tincture MakeFretty(Tincture b, Tincture fret, bool fine) => new Tincture
+        {
+            Kind = TinctureKind.Fretty, Name = b.Name + " fretty " + fret.Name, Base = b, Fret = fret, Fine = fine,
+            Hex = b.Kind == TinctureKind.Hex || b.Kind == TinctureKind.Tartan ? b.Hex
+                : Lexicon.Palette.TryGetValue(b.Name, out var c) ? c : b.Hex,
+        };
+
+        private bool TryTinctureCore(out Tincture t, bool allowProper, bool allowCounterchanged)
         {
             t = null;
             string w = Cur;

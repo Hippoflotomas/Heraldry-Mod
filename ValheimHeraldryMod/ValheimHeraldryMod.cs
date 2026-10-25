@@ -13,7 +13,7 @@ namespace ValheimHeraldryMod
     {
         public const string PluginGUID = "com.hippotech.valheimheraldrymod";
         public const string PluginName = "Valheim Heraldry Mod";
-        public const string PluginVersion = "1.2.0";
+        public const string PluginVersion = "1.3.0";
 
         // https://valheim-modding.github.io/Jotunn/tutorials/localization.html
         /// <summary>The plugin, for coroutines.</summary>
@@ -45,7 +45,7 @@ namespace ValheimHeraldryMod
 
             // Patches applied one class at a time, so if a game update breaks one, only that feature is lost
             var harmony = new HarmonyLib.Harmony(PluginGUID);
-            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch), typeof(Tabards.TabardEquip), typeof(Tabards.TabardVisuals), typeof(Rendering.ItemIcons), typeof(Banners.HeraldicPiecePatches), typeof(Rendering.LogoArt) })
+            foreach (var type in new[] { typeof(Station.TablePatches), typeof(Shields.ShieldPatches), typeof(Shields.ShieldTooltipPatch), typeof(Tabards.TabardEquip), typeof(Tabards.TabardVisuals), typeof(Rendering.ItemIcons), typeof(Banners.HeraldicPiecePatches), typeof(Rendering.LogoArt), typeof(UI.Compendium), typeof(Station.HuginTutorial) })
             {
                 try
                 {

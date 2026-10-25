@@ -783,7 +783,7 @@ namespace ValheimHeraldryMod.UI
             }
             else
             {
-                Rgba c = t.Kind == TinctureKind.Hex || t.Kind == TinctureKind.Tartan ? t.Hex
+                Rgba c = t.Kind == TinctureKind.Hex || t.Kind == TinctureKind.Tartan || t.Kind == TinctureKind.Fretty ? t.Hex
                     : Lexicon.Palette.TryGetValue(t.Name, out var p) ? p : new Rgba(255, 0, 255);
                 img.color = new Color32(c.R, c.G, c.B, 255);
             }

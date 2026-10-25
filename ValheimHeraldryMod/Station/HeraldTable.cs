@@ -70,6 +70,7 @@ namespace ValheimHeraldryMod.Station
 
         private void Refresh()
         {
+            HuginTutorial.Check(transform.position);
             if (display == null) return;
             var zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null) return;

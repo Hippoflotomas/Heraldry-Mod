@@ -204,16 +204,24 @@ namespace ValheimHeraldryMod.Heraldry
             int region = FieldRegion(field, x, y);
             Rgba c = Colour(field.Tinctures[Math.Min(region, field.Tinctures.Count - 1)], x, y);
 
+            // Ordinaries, then the charges on the field, then anything laid "over all" on top of them
             foreach (var o in blazon.Ordinaries)
-            {
-                if (o.Tincture == null) continue;
-                c = o.Style.IsPlain
-                    ? (InsideOrdinary(o, x, y, 0) ? Tinct(o.Tincture, region, x, y) : c)
-                    : DrawOrdinary(o, c, region, x, y);
-                if (o.Inscription != null && InsideOrdinary(o, x, y, 0)) c = OrdinaryText(o, c, region, x, y);
-                if (onCharges.TryGetValue(o, out var on)) c = DrawCharges(on, c, region, x, y);
-            }
+                if (!o.OverAll) c = Ordinary(o, c, region, x, y);
             if (fieldCharges.Count > 0) c = DrawCharges(fieldCharges, c, region, x, y);
+            foreach (var o in blazon.Ordinaries)
+                if (o.OverAll) c = Ordinary(o, c, region, x, y);
+            return c;
+        }
+
+        /// <summary>One ordinary over what's beneath it: its band, its words, the charges on it.</summary>
+        private Rgba Ordinary(Ordinary o, Rgba c, int region, float x, float y)
+        {
+            if (o.Tincture == null) return c;
+            c = o.Style.IsPlain
+                ? (InsideOrdinary(o, x, y, 0) ? Tinct(o.Tincture, region, x, y) : c)
+                : DrawOrdinary(o, c, region, x, y);
+            if (o.Inscription != null && InsideOrdinary(o, x, y, 0)) c = OrdinaryText(o, c, region, x, y);
+            if (onCharges.TryGetValue(o, out var on)) c = DrawCharges(on, c, region, x, y);
             return c;
         }
 
@@ -574,6 +582,7 @@ namespace ValheimHeraldryMod.Heraldry
             if (t.Kind == TinctureKind.Hex) return t.Hex;
             if (t.Kind == TinctureKind.Fur) return Fur(t.Name, x, y);
             if (t.Kind == TinctureKind.Tartan) return TartanAt(t.Sett, x, y);
+            if (t.Kind == TinctureKind.Fretty) return Fretty(t, x, y);
             return Lexicon.Palette.TryGetValue(t.Name, out var c) ? c : Magenta;
         }
 
@@ -594,6 +603,41 @@ namespace ValheimHeraldryMod.Heraldry
             }
             int ix = Math.Max(0, Math.Min(w - 1, (int)x)), iy = Math.Max(0, Math.Min(h - 1, (int)y));
             return img[iy * w + ix];
+        }
+
+        /// <summary>Trellis spacing: parallel bands per narrow side, on a whole field and on an ordinary or charge.</summary>
+        public const float FrettyPieces = 4f, FrettedPieces = 9f;
+
+        /// <summary>
+        ///     Fretty: bendlets and bendlets sinister interlaced, centred on the fess point. At each crossing one band
+        ///     goes over (alternating like a weave) and the other stops just short of it, so the base shows in a thin
+        ///     gap; band edges are darkened a little so the trellis reads on any tincture.
+        /// </summary>
+        private Rgba Fretty(Tincture t, float x, float y)
+        {
+            float s = unit / (t.Fine ? FrettedPieces : FrettyPieces);
+            float hw = s * 0.1f, gap = s * 0.045f, edge = Math.Max(0.8f, s * 0.025f);
+            float dx = x - cxp, dy = y - cyp;
+            float fa = (dx + dy) * 0.70710678f / s, fb = (dx - dy) * 0.70710678f / s;
+            int ka = Floor(fa + 0.5f), kb = Floor(fb + 0.5f);
+            float da = Math.Abs(fa - ka) * s, db = Math.Abs(fb - kb) * s;
+            bool inA = da < hw, inB = db < hw;
+            if (!inA && !inB) return Colour(t.Base, x, y);
+            bool aOver = ((ka + kb) & 1) == 0;
+            float d; // distance to the edge of the band shown here
+            if (inA && inB) d = hw - (aOver ? da : db);
+            else if (inA)
+            {
+                if (!aOver && db < hw + gap) return Colour(t.Base, x, y); // under the B band: the gap
+                d = hw - da;
+            }
+            else
+            {
+                if (aOver && da < hw + gap) return Colour(t.Base, x, y);
+                d = hw - db;
+            }
+            var c = Colour(t.Fret, x, y);
+            return d < edge ? Mix(c, Black, 0.35f) : c;
         }
 
         private Rgba Fur(string name, float x, float y)

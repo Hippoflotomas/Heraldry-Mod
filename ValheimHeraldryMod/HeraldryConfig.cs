@@ -60,6 +60,9 @@ namespace ValheimHeraldryMod
         public static int MaxBlazonElements => maxBlazonElements?.Value ?? 25;
 
         /// <summary>The editor mode last used on this computer ("basic" or "advanced").</summary>
+        private static ConfigEntry<bool> compendiumPages;
+        public static bool CompendiumPages => compendiumPages?.Value ?? true;
+
         public static string LastEditorMode
         {
             get => lastEditorMode?.Value ?? "basic";
@@ -193,6 +196,8 @@ namespace ValheimHeraldryMod
             editKey = config.Bind("Client", "TaggedPieceEditKey", KeyCode.E,
                 "See TaggedPieceEditModifier. Pieces with nothing else to do are edited with E as usual.");
 
+            compendiumPages = config.Bind("Client", "CompendiumPages", true,
+                "Show the heraldry guide pages (how to write a blazon, colours, ordinaries, charges...) in the compendium.");
             lastEditorMode = config.Bind("Client", "EditorMode", "basic",
                 new ConfigDescription("Which tab the blazon window opens on: 'basic' (dropdowns) or 'advanced' (write the blazon). " +
                                       "Remembers the last one you used.",
