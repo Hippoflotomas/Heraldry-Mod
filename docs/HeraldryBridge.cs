@@ -5,6 +5,7 @@
 //     [BepInDependency("com.hippotech.valheimheraldrymod", BepInDependency.DependencyFlags.SoftDependency)]
 //
 // Guide: https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md
+// EXPERIMENTAL: the API may still change in later Heraldry Mod versions (check ApiVersion); update this file with it.
 // Bridge version 1 (API version 1). You're free to copy this file into your own mod, change it and ship it.
 
 using System;
@@ -27,7 +28,7 @@ namespace YourMod
         /// <summary>True if Heraldry Mod is installed and its API is there.</summary>
         public static bool Available => Bind();
 
-        /// <summary>Heraldry Mod's API version (0 = not installed). Newer versions only add methods.</summary>
+        /// <summary>Heraldry Mod's API version (0 = not installed). It goes up whenever the API changes.</summary>
         public static int ApiVersion => Bind() ? apiVersion : 0;
 
         // ------------------------------------------------------------ faces on your models

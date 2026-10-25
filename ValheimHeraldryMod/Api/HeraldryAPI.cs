@@ -10,15 +10,16 @@ namespace ValheimHeraldryMod
 {
     /// <summary>
     ///     <para>
-    ///         The public API for other mods (2026-10-25). Meant to be called by reflection, so a mod needs no reference
+    ///         The public API for other mods (2026-10-25; Heraldry Mod 1.4.0). EXPERIMENTAL: names and behaviour may
+    ///         still change until it's marked stable; every change raises <see cref="ApiVersion"/>. Meant to be called by reflection, so a mod needs no reference
     ///         to this dll and works with or without Heraldry Mod installed (a soft dependency). docs/HeraldryBridge.cs
     ///         is a ready-made copy-in file that does the reflection. Full guide: docs/ModderGuide.md.
     ///     </para>
     ///     <para>
-    ///         Rules, kept for every version: plain types only (string, int, bool, float, GameObject, ItemDrop.ItemData,
+    ///         Rules: plain types only (string, int, bool, float, GameObject, ItemDrop.ItemData,
     ///         Texture2D, Func, Action); every method has its own name (no overloads, so <c>GetMethod(name)</c> is never
     ///         ambiguous); nothing throws (failures return false, null or an empty value, with the reason in the log);
-    ///         changes only ever add. A method that has shipped never changes.
+    ///         once the API is marked stable, changes only ever add.
     ///     </para>
     ///     <para>
     ///         Blazons go in and come out as they're stored: the text players write, sometimes followed by a hidden tail
@@ -28,7 +29,7 @@ namespace ValheimHeraldryMod
     /// </summary>
     public static class HeraldryAPI
     {
-        /// <summary>Goes up by one whenever methods are added. 1 = the first version (Heraldry Mod 1.4.0).</summary>
+        /// <summary>Goes up by one whenever the API changes. 1 = the first, experimental version (Heraldry Mod 1.4.0).</summary>
         public const int ApiVersion = 1;
 
         /// <summary>Heraldry Mod's own version ("1.4.0").</summary>

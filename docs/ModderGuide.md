@@ -93,7 +93,12 @@ All names are matched exactly (capitals matter). Unity's own " (Instance)" and "
 - The painted face uses a copy of the face's own material with the arms as its main texture, so use a shader with
   a `_MainTex` slot (Valheim's own shaders do). If yours has none, a plain wood material is used.
 
-## From code: the API (Heraldry Mod 1.4.0 and later)
+## From code: the API (Heraldry Mod 1.4.0 and later; experimental)
+
+> **Experimental.** The API is new and may still change: methods may be renamed, change their parameters or
+> behave differently in a later version, until it's marked stable. Every change raises `ApiVersion`, so check it
+> (`HeraldryBridge.ApiVersion`) and expect to update your code. The tags above are not experimental: they won't
+> change.
 
 Everything above also works from code, plus a few things tags can't do: reading and writing arms, suggesting a
 guild's arms, getting the arms as a texture, and opening the editor. It's a public static class,
@@ -151,8 +156,9 @@ public class MyMod : BaseUnityPlugin
   server it's null.
 - **Nothing throws.** Failures return false, "", null or an empty array, with the reason in the log
   (`[Heraldry API] …`).
-- **Only additions.** Every method has its own name (no overloads, so `GetMethod(name)` is never ambiguous) and
-  uses plain types. Once a method has shipped it never changes; new ones raise `ApiVersion`.
+- **Plain and unambiguous.** Every method has its own name (no overloads, so `GetMethod(name)` is never ambiguous)
+  and uses plain types. While the API is experimental, methods can still change; any change raises `ApiVersion`.
+  Once it's marked stable, changes will only ever add.
 
 **Stored text.** Arms come out exactly as stored: the text players write, sometimes followed by a hidden tail
 (after the invisible character U+001F) naming the exact picture of each `[bracketed]` charge. Pass that text back

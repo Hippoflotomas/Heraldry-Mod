@@ -190,7 +190,7 @@ object (or its material) **`ValheimHeraldryMod_Face`**. You can also add an empt
 **`ValheimHeraldryMod_UseUVs`** to use your own UVs on faces that wrap round. Without this mod installed, the tags
 do nothing.
 
-Prefer code? A small **API**, called by reflection so Heraldry Mod stays an optional dependency, can register faces
+Prefer code? A small **API** (experimental: it may still change), called by reflection so Heraldry Mod stays an optional dependency, can register faces
 by path, read and write the arms on pieces and items, offer a guild's arms in the editor, draw arms as a texture
 (for skinned meshes or UI) and open the editor. Copy
 [HeraldryBridge.cs](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/HeraldryBridge.cs) into your

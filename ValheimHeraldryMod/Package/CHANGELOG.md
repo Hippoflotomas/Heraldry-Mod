@@ -1,9 +1,11 @@
-## Unreleased
+## Version 1.4.0
 ### New
-- **An API for other mods.** Called by reflection, so Heraldry Mod stays an optional dependency for them. Other mods
-  can register paintable faces from code, read and write the arms on placed pieces, shields and tabards (no paint
-  cost; the server's limits still apply), offer a guild's arms at the top of the saved blazons, get arms drawn as a
-  texture, and open the blazon editor. A copy-in `HeraldryBridge.cs` and a guide are in the repository's docs.
+- **An API for other mods (experimental).** Called by reflection, so Heraldry Mod stays an optional
+  dependency for them. Other mods can register paintable faces from code, read and write the arms on placed
+  pieces, shields and tabards (no paint cost; the server's limits still apply), offer a guild's arms at the top of
+  the saved blazons, get arms drawn as a texture, and open the blazon editor. A copy-in `HeraldryBridge.cs` and a
+  guide are in the repository's docs. It's experimental for now: method names and behaviour may still change in
+  later versions, so modders should expect to update their code. Nothing changes for players.
 
 ## Version 1.3.0
 ### New
