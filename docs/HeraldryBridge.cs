@@ -4,9 +4,9 @@
 // Recommended on your plugin class, so Heraldry Mod loads first when it's there (it stays optional):
 //     [BepInDependency("com.hippotech.valheimheraldrymod", BepInDependency.DependencyFlags.SoftDependency)]
 //
-// Guide: https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md
+// Reference and examples: https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/API.md
 // EXPERIMENTAL: the API may still change in later Heraldry Mod versions (check ApiVersion); update this file with it.
-// Bridge version 1 (API version 1). You're free to copy this file into your own mod, change it and ship it.
+// Bridge version 2 (API version 2; also works with Heraldry Mod 1.4.0's API 1: the newer calls then do nothing). You're free to copy this file into your own mod, change it and ship it.
 
 using System;
 using System.Reflection;
@@ -22,8 +22,9 @@ namespace YourMod
         private static bool bound, givenUp;
         private static int apiVersion;
         private static MethodInfo registerFace, registerFaceAdvanced, getPiecePatterns, getPieceBlazon, setPieceBlazon,
-            getItemPatterns, getItemBlazon, setItemBlazon, checkBlazon, displayBlazon, expandBlazon, registerArmsProvider,
-            renderBlazon, releaseBlazonTexture, openEditor, openEditorForText;
+            getItemPatterns, getItemBlazon, setItemBlazon, getSlotBlazon, checkBlazon, displayBlazon, expandBlazon,
+            registerArmsProvider, renderBlazon, releaseBlazonTexture, isEditingLocked, openEditor, openTableEditor,
+            openEditorForText;
 
         /// <summary>True if Heraldry Mod is installed and its API is there.</summary>
         public static bool Available => Bind();
@@ -53,6 +54,12 @@ namespace YourMod
         /// <summary>Shields and tabards. Call on the client of the player holding the item. No paint; limits apply.</summary>
         public static bool SetItemBlazon(ItemDrop.ItemData item, string blazon, int pattern = 1) => Call(setItemBlazon, false, item, blazon, pattern);
 
+        /// <summary>
+        ///     Arms by slot on a player ("HandLeft", "BackLeft", "Tabard" or 0–2), an armour stand (its slot name or index)
+        ///     or an item stand (""). Any loaded player or stand. API 2+.
+        /// </summary>
+        public static string GetSlotBlazon(GameObject target, string slot, int pattern = 1) => Call(getSlotBlazon, "", target, slot, pattern);
+
         // ------------------------------------------------------------ blazon text
 
         /// <summary>Null if fine, else the first problem in plain words. Without Heraldry Mod: null.</summary>
@@ -75,7 +82,12 @@ namespace YourMod
 
         // ------------------------------------------------------------ the editor
 
-        /// <summary>The editor on a placed piece, as if the player pressed E (pattern 0 = the first).</summary>
+        /// <summary>True if the server locks editing for the local player (admins never are). The calls below ignore the lock. API 2+.</summary>
+        public static bool IsEditingLocked() => Call(isEditingLocked, false);
+        /// <summary>The herald's table window without a table: the local player's shields and tabards. Ignores the lock. API 2+.</summary>
+        public static bool OpenTableEditor() => Call(openTableEditor, false);
+
+        /// <summary>The editor on a placed piece, as if the player pressed E (pattern 0 = the first); ignores the editing lock.</summary>
         public static bool OpenEditor(GameObject piece, int pattern = 0) => Call(openEditor, false, piece, pattern);
         /// <summary>The editor on arms that aren't on anything; onApply gets the arms when the player presses Apply. aspect 0 = shield shape.</summary>
         public static bool OpenEditorForText(string title, string blazon, float aspect, Action<string> onApply) =>
@@ -134,13 +146,16 @@ namespace YourMod
             getItemPatterns = M("GetItemPatterns", item);
             getItemBlazon = M("GetItemBlazon", item, i);
             setItemBlazon = M("SetItemBlazon", item, s, i);
+            getSlotBlazon = M("GetSlotBlazon", go, s, i);
             checkBlazon = M("CheckBlazon", s);
             displayBlazon = M("DisplayBlazon", s);
             expandBlazon = M("ExpandBlazon", s);
             registerArmsProvider = M("RegisterArmsProvider", s, typeof(Func<Player, string>));
             renderBlazon = M("RenderBlazon", s, i, i);
             releaseBlazonTexture = M("ReleaseBlazonTexture", typeof(Texture2D));
+            isEditingLocked = M("IsEditingLocked");
             openEditor = M("OpenEditor", go, i);
+            openTableEditor = M("OpenTableEditor");
             openEditorForText = M("OpenEditorForText", s, s, typeof(float), typeof(Action<string>));
             var version = api.GetField("ApiVersion", BindingFlags.Public | BindingFlags.Static);
             apiVersion = version != null ? (int)version.GetValue(null) : 1;

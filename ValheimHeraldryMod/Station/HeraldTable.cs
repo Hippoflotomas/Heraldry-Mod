@@ -104,18 +104,22 @@ namespace ValheimHeraldryMod.Station
             Jotunn.Logger.LogDebug($"[Heraldry] Table at {transform.position:F1} shows \"{text}\" ({tex.width}x{tex.height}, {displayMaterial.shader.name}).");
         }
 
-        /// <summary>Shift+E: paint one of the player's shields here.</summary>
+        /// <summary>Shift+E: paint one of the player's shields here (greyed out, to look at only, when editing is locked).</summary>
         public void OpenPaint(Player player)
         {
-            BlazonEditor.Open(new TableTarget(this, player));
+            BlazonEditor.Open(new TableTarget(this, player), HeraldryConfig.EditingLocked);
         }
     }
 
-    /// <summary>The blazon editor's view of the herald's table: choose a shield, paint it.</summary>
+    /// <summary>
+    ///     The blazon editor's view of the herald's table: choose a shield, paint it. Also opened by other mods through
+    ///     the API with no table at all (<c>table</c> null): the same window, nothing to stand near, no display shield.
+    /// </summary>
     internal sealed class TableTarget : IBlazonTarget
     {
         private const float MaxDistance = 5f;
         private readonly HeraldTable table;
+        private readonly bool hasTable; // Unity's == null is also true once a table is destroyed, so remember which this is
         private readonly Player player;
         private readonly List<ItemDrop.ItemData> shields; // shields and tabards: everything paintable
         private int chosen;
@@ -124,6 +128,7 @@ namespace ValheimHeraldryMod.Station
         public TableTarget(HeraldTable table, Player player)
         {
             this.table = table;
+            hasTable = table != null;
             this.player = player;
             // Equipped things first, then the rest in inventory order
             shields = player.GetInventory().GetAllItemsInGridOrder()
@@ -139,18 +144,18 @@ namespace ValheimHeraldryMod.Station
 
         private string Key => Shields.Patterns.Key(HeraldTable.ItemBlazonKey, pattern);
 
-        public string Title => "Herald's table";
+        public string Title => hasTable ? "Herald's table" : "Your shields and tabards";
         public string ApplyLabel => "Paint";
-        public bool IsAlive => table != null && player != null &&
-                               Vector3.Distance(player.transform.position, table.transform.position) < MaxDistance;
+        public bool IsAlive => player != null &&
+                               (!hasTable || (table != null && Vector3.Distance(player.transform.position, table.transform.position) < MaxDistance));
         // The preview takes the chosen shield's own face shape; the table's round shield if it can't be worked out
         // (a tabard: its front panel)
         private bool IsTabard => shields.Count > 0 && Tabards.TabardItem.IsTabard(shields[chosen]);
         private Tabards.TabardMesh.Panel Panel => IsTabard ? Tabards.TabardMesh.Front : null;
         private Shields.ShieldFace Face => shields.Count == 0 || IsTabard ? null : Shields.ShieldPatches.FaceForItem(shields[chosen], pattern);
         public float Aspect => Panel?.Aspect ?? Face?.Aspect ?? 1f;
-        public float[] OutlineUV => Panel?.OutlineUV ?? Face?.OutlineUV ?? table.m_displayUV;
-        public int[] OutlineTriangles => Panel?.OutlineTriangles ?? Face?.OutlineTriangles ?? table.m_displayTriangles;
+        public float[] OutlineUV => Panel?.OutlineUV ?? Face?.OutlineUV ?? (hasTable ? table.m_displayUV : null);
+        public int[] OutlineTriangles => Panel?.OutlineTriangles ?? Face?.OutlineTriangles ?? (hasTable ? table.m_displayTriangles : null);
         public float HiddenTop => 0f;
         public Heraldry.FieldRenderer.Arrangement Arrangement =>
             IsTabard ? Heraldry.FieldRenderer.Arrangement.Chest : Heraldry.FieldRenderer.Arrangement.Compact;
@@ -183,7 +188,7 @@ namespace ValheimHeraldryMod.Station
 
         public string GetText()
         {
-            if (shields.Count == 0) return table.GetDisplayText();
+            if (shields.Count == 0) return hasTable ? table.GetDisplayText() : "";
             var data = shields[chosen].m_customData;
             return data != null && data.TryGetValue(Key, out var text) ? text : "";
         }
@@ -195,7 +200,7 @@ namespace ValheimHeraldryMod.Station
             if (item.m_customData == null) item.m_customData = new Dictionary<string, string>();
             if (text.Length == 0) item.m_customData.Remove(Key);
             else item.m_customData[Key] = text;
-            if (text.Length > 0) table.SetDisplayText(text);
+            if (text.Length > 0 && hasTable && table != null) table.SetDisplayText(text);
             Shields.ShieldPatches.RefreshEquipment(player); // so a shield in hand or on the back shows it at once
             if (Tabards.TabardItem.IsTabard(item)) player.GetComponent<Tabards.HeraldicTabardWearer>()?.Publish();
             string which = Patterns != null && Patterns.Count > 1 ? $" (pattern {pattern})" : "";

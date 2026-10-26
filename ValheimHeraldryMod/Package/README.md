@@ -167,6 +167,9 @@ Server settings are synced to every client and only admins can change them. Some
 - `MaxBlazonLength` (500) and `MaxBlazonElements` (25).
 - `MaxBannerResolution` (1024).
 - `ShowMottos`: off hides the words on scrolls from everyone except admins.
+- `LockEditing` (off): players can't change arms themselves. Banners, pieces and the herald's table open the blazon
+  window greyed out, to look at only ("Arms must first be granted in this realm."). Admins aren't locked, and other
+  mods can grant editing through the API. The table still crafts paint and tabards.
 - `MaxInscriptionLength` (40).
 - `ExcludeShields`: shields that can't be painted (default `ShieldShare_`).
 - `ExcludeGameIcons`: game items that can't be charges, or `all`.
@@ -188,14 +191,14 @@ object (or its material) **`ValheimHeraldryMod_Face`**. You can also add an empt
 **`ValheimHeraldryMod_CentrePoint`** to set the centre of the arms on a lopsided shape. Number the tags
 (`ValheimHeraldryMod_Face_2` … `_4`) for up to four different patterns on one item, and add
 **`ValheimHeraldryMod_UseUVs`** to use your own UVs on faces that wrap round. Without this mod installed, the tags
-do nothing.
+do nothing. The full spec is in [ModderGuide.md](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md).
 
-Prefer code? A small **API** (experimental: it may still change), called by reflection so Heraldry Mod stays an optional dependency, can register faces
-by path, read and write the arms on pieces and items, offer a guild's arms in the editor, draw arms as a texture
-(for skinned meshes or UI) and open the editor. Copy
-[HeraldryBridge.cs](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/HeraldryBridge.cs) into your
-mod and call it. The full spec for both is in
-[ModderGuide.md](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/ModderGuide.md).
+Prefer code? A small **API** (experimental: it may still change), called by reflection so Heraldry Mod stays an
+optional dependency, can register faces by path, read and write arms on pieces, items, players and stands, offer a
+guild's arms in the editor, draw arms as a texture (for skinned meshes or UI), and open the editor, even past
+`LockEditing`. Copy [HeraldryBridge.cs](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/HeraldryBridge.cs)
+into your mod; the reference and examples are in
+[API.md](https://github.com/Hippoflotomas/Heraldry-Mod/blob/master/docs/API.md).
 
 ## Known limitations
 - Some charges are recognised but have no drawing of their own (lion, eagle, dragon, raven, hammer,

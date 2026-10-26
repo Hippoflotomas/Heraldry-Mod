@@ -1,3 +1,19 @@
+## Version 1.5.0
+### New
+- **Editing lock** (server setting `LockEditing`, off by default): players can look at arms but not change them.
+  Banners, pieces and the herald's table open the blazon window greyed out, with "Arms must first be granted in
+  this realm." Admins aren't locked. Made for servers where arms are granted (by a guild, a king, a quest): other
+  mods can let a player edit through the API.
+- **API version 2** (still experimental): read arms by slot from any player, armour stand or item stand
+  (`GetSlotBlazon`), open the herald's table window without a table (`OpenTableEditor`), and ask whether editing is
+  locked (`IsEditingLocked`). The API's editor calls ignore the editing lock. A full reference with examples is in
+  the repository's `docs/API.md`.
+
+### Fixed
+- **"Counterchanged" on an undivided field** (`Azure, a mullet counterchanged`, or on a tartan or fretty field) was
+  accepted and drew the charge solid magenta. It's now marked as an error in the editor: counterchanged needs a
+  divided field to swap colours with.
+
 ## Version 1.4.0
 ### New
 - **An API for other mods (experimental).** Called by reflection, so Heraldry Mod stays an optional

@@ -149,7 +149,8 @@ namespace ValheimHeraldryMod.Banners
                 shown += $"\n<color=#ff7060>{hoverProblem}</color>";
             if (!PrivateArea.CheckAccess(transform.position, 0f, false, false))
                 return Localization.instance.Localize($"{m_displayName}\n{shown}\n$piece_noaccess");
-            return Localization.instance.Localize($"{m_displayName}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] Write blazon");
+            string action = HeraldryConfig.EditingLocked ? "View arms" : "Write blazon";
+            return Localization.instance.Localize($"{m_displayName}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] {action}");
         }
 
         public string GetHoverName() => m_displayName;
@@ -162,7 +163,7 @@ namespace ValheimHeraldryMod.Banners
                 return false;
             if (!PrivateArea.CheckAccess(transform.position, 0f, true, false))
                 return true;
-            UI.BlazonEditor.Open(this);
+            UI.BlazonEditor.Open(this, HeraldryConfig.EditingLocked); // locked: greyed out, to look at only
             return true;
         }
 

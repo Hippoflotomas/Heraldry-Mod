@@ -49,6 +49,12 @@ namespace ValheimHeraldryMod.UI
         private RectTransform savedContent;
 
         private IBlazonTarget target;
+        /// <summary>
+        ///     View only (the server's LockEditing, 2026-10-26): the arms and the preview show, but nothing can be changed
+        ///     or applied. Picking another shield or pattern to look at, and saving a copy to your own list, still work.
+        /// </summary>
+        private bool readOnly;
+        private Button applyButton;
         private Text title, applyLabel, choiceLabel;
 
         // ---- basic mode (dropdowns; Hippo 2026-10-13) ----
@@ -99,9 +105,10 @@ namespace ValheimHeraldryMod.UI
 
         public static bool IsOpen => instance != null && instance.panel != null && instance.panel.activeSelf;
 
-        public static void Open(HeraldicBanner banner) => Open(new BannerTarget(banner));
+        public static void Open(HeraldicBanner banner, bool readOnly = false) => Open(new BannerTarget(banner), readOnly);
 
-        public static void Open(IBlazonTarget target)
+        /// <summary>Opens the editor on a target; <paramref name="readOnly"/> = greyed out, to look at only (editing locked).</summary>
+        public static void Open(IBlazonTarget target, bool readOnly = false)
         {
             if (GUIManager.Instance == null || GUIManager.CustomGUIFront == null) return;
             if (instance == null)
@@ -110,7 +117,7 @@ namespace ValheimHeraldryMod.UI
                 DontDestroyOnLoad(go);
                 instance = go.AddComponent<BlazonEditor>();
             }
-            instance.Show(target);
+            instance.Show(target, readOnly);
         }
 
         public static void Close() => instance?.Hide();
@@ -223,6 +230,7 @@ namespace ValheimHeraldryMod.UI
 
             // ---- buttons ----
             applyLabel = AddButton("Apply", RightX, ButtonsY, 150, 40, Apply);
+            applyButton = applyLabel.GetComponentInParent<Button>();
             AddButton("Cancel", RightX + 160, ButtonsY, 150, 40, Hide);
             status = Label("", RightX + 330, ButtonsY + 8, RightW - 330, 28, 15, Beige);
 
@@ -277,10 +285,11 @@ namespace ValheimHeraldryMod.UI
 
         // ================================================================== show / hide
 
-        private void Show(IBlazonTarget newTarget)
+        private void Show(IBlazonTarget newTarget, bool viewOnly)
         {
             if (panel == null) Build();
             target = newTarget;
+            readOnly = viewOnly;
             title.text = target.Title;
             applyLabel.text = target.ApplyLabel;
             SetupShape();
@@ -294,14 +303,15 @@ namespace ValheimHeraldryMod.UI
             FillChargeList();
             SyncBasic();
             SetMode(HeraldryConfig.LastEditorMode != "advanced", false);
-            if (basicMode && input.text.Trim().Length == 0) input.text = basic.Build(); // start from the default arms
+            if (basicMode && input.text.Trim().Length == 0 && !viewOnly) input.text = basic.Build(); // start from the default arms
             saveName.text = "";
             RefreshSaved();
             status.text = target.Blocked ?? "";
+            ShowReadOnly();
             panel.SetActive(true);
             if (unblockAfterFrame >= 0) unblockAfterFrame = -1; // reopened before the release: keep the block
             else GUIManager.BlockInput(true);
-            if (!basicMode)
+            if (!basicMode && !readOnly)
             {
                 input.ActivateInputField();
                 input.MoveTextEnd(false);
@@ -337,6 +347,7 @@ namespace ValheimHeraldryMod.UI
             choiceList.SetActive(false);
             tooltip.transform.parent.gameObject.SetActive(false);
             target = null;
+            readOnly = false;
             // Release next frame, so the Enter or Escape that closed us can't also open chat or the menu
             unblockAfterFrame = Time.frameCount;
         }
@@ -344,6 +355,11 @@ namespace ValheimHeraldryMod.UI
         private void Apply()
         {
             if (target == null) return;
+            if (readOnly)
+            {
+                status.text = Locked;
+                return;
+            }
             if (target.Blocked != null)
             {
                 status.text = target.Blocked;
@@ -604,7 +620,8 @@ namespace ValheimHeraldryMod.UI
             bool stale = current.Length > 0 && current != basic.Build();
             var group = basicPanel.GetComponent<CanvasGroup>();
             if (group == null) group = basicPanel.AddComponent<CanvasGroup>();
-            group.alpha = stale ? 0.45f : 1f;
+            group.alpha = stale || readOnly ? 0.45f : 1f;
+            group.interactable = !readOnly; // view only: the dropdowns show the arms but can't be changed
             const string Note = "Changing a dropdown replaces these arms.";
             if (stale && status.text.Length == 0) status.text = Note;
             else if (!stale && status.text == Note) status.text = "";
@@ -630,7 +647,7 @@ namespace ValheimHeraldryMod.UI
             basicMode = basicOn;
             if (remember) HeraldryConfig.LastEditorMode = basicOn ? "basic" : "advanced";
             basicPanel.SetActive(basicOn);
-            input.readOnly = basicOn;
+            input.readOnly = basicOn || readOnly;
             if (basicOn)
             {
                 Place(fieldRect, RightX, BasicFieldY, RightW, BasicFieldH);
@@ -645,8 +662,11 @@ namespace ValheimHeraldryMod.UI
                 Place(blazonLabel.rectTransform, RightX, 70, 300, 26);
                 blazonLabel.text = "Blazon";
                 if (status.text == "Changing a dropdown replaces these arms.") status.text = "";
-                input.ActivateInputField();
-                input.MoveTextEnd(false);
+                if (!readOnly)
+                {
+                    input.ActivateInputField();
+                    input.MoveTextEnd(false);
+                }
             }
             basicTabLabel.color = basicOn ? GUIManager.Instance.ValheimOrange : Color.white;
             advancedTabLabel.color = basicOn ? Color.white : GUIManager.Instance.ValheimOrange;
@@ -835,6 +855,25 @@ namespace ValheimHeraldryMod.UI
             tipBox.SetActive(false);
         }
 
+        // ================================================================== view only
+
+        private static string Locked => $"<color=#f0a040>{HeraldryConfig.LockedMessage}</color>";
+
+        /// <summary>Greys out what can't be used while the window is view only (and puts it all back when it isn't).</summary>
+        private void ShowReadOnly()
+        {
+            applyButton.interactable = !readOnly;
+            var group = input.GetComponent<CanvasGroup>() ?? input.gameObject.AddComponent<CanvasGroup>();
+            group.alpha = readOnly ? 0.6f : 1f;
+            input.readOnly = basicMode || readOnly;
+            if (readOnly)
+            {
+                input.DeactivateInputField();
+                status.text = Locked;
+            }
+            if (basicMode) ShowBasicStale();
+        }
+
         // ================================================================== problems list
 
         private void ShowProblems()
@@ -969,6 +1008,7 @@ namespace ValheimHeraldryMod.UI
                 suggested.AddComponent<LayoutElement>().preferredHeight = 30;
                 suggested.GetComponent<Button>().onClick.AddListener(() =>
                 {
+                    if (readOnly) { status.text = Locked; return; }
                     if (basicMode) SetMode(false, true);
                     Load(arms);
                     status.text = $"Loaded '{label}'. Apply to paint it.";
@@ -993,6 +1033,7 @@ namespace ValheimHeraldryMod.UI
                 load.AddComponent<LayoutElement>().flexibleWidth = 1;
                 load.GetComponent<Button>().onClick.AddListener(() =>
                 {
+                    if (readOnly) { status.text = Locked; return; }
                     if (basicMode) SetMode(false, true); // saved arms go to the text box; basic can't show them
                     Load(s.blazon); // loads into the box; Apply still needed
                     status.text = $"Loaded '{s.name}'. Apply to paint it.";

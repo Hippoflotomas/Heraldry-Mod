@@ -13,7 +13,7 @@ namespace ValheimHeraldryMod
     ///         The public API for other mods (2026-10-25; Heraldry Mod 1.4.0). EXPERIMENTAL: names and behaviour may
     ///         still change until it's marked stable; every change raises <see cref="ApiVersion"/>. Meant to be called by reflection, so a mod needs no reference
     ///         to this dll and works with or without Heraldry Mod installed (a soft dependency). docs/HeraldryBridge.cs
-    ///         is a ready-made copy-in file that does the reflection. Full guide: docs/ModderGuide.md.
+    ///         is a ready-made copy-in file that does the reflection. Reference and examples: docs/API.md.
     ///     </para>
     ///     <para>
     ///         Rules: plain types only (string, int, bool, float, GameObject, ItemDrop.ItemData,
@@ -29,10 +29,14 @@ namespace ValheimHeraldryMod
     /// </summary>
     public static class HeraldryAPI
     {
-        /// <summary>Goes up by one whenever the API changes. 1 = the first, experimental version (Heraldry Mod 1.4.0).</summary>
-        public const int ApiVersion = 1;
+        /// <summary>
+        ///     Goes up by one whenever the API changes. 1 = the first, experimental version (Heraldry Mod 1.4.0); 2 = adds
+        ///     <see cref="OpenTableEditor"/>, <see cref="GetSlotBlazon"/> and <see cref="IsEditingLocked"/>, and the editor
+        ///     calls ignore the server's editing lock (Heraldry Mod 1.5.0).
+        /// </summary>
+        public const int ApiVersion = 2;
 
-        /// <summary>Heraldry Mod's own version ("1.4.0").</summary>
+        /// <summary>Heraldry Mod's own version ("1.5.0").</summary>
         public static string ModVersion => ValheimHeraldryMod.PluginVersion;
 
         // ================================================================== 1. faces on other mods' models
@@ -167,6 +171,77 @@ namespace ValheimHeraldryMod
             catch (Exception ex) { return Fail("SetItemBlazon: " + ex.Message); }
         }
 
+        /// <summary>
+        ///     The arms on something holding items, by slot: what a player shows, or what an armour stand or item stand
+        ///     holds. Read from what Heraldry Mod already shares with every client, so it works for any player or stand
+        ///     that's loaded, not only your own. "" if nothing painted is there, or if the slot doesn't exist (logged).
+        ///     <list type="bullet">
+        ///         <item><b>Players:</b> "HandLeft" (shield in hand), "BackLeft" (shield on the back) or "Tabard"; or 0, 1, 2
+        ///         in that order. Shows what's displayed: a sheathed shield is on the back, not in the hand. It can lag an
+        ///         equip change by one network update. The tabard has only pattern 1.</item>
+        ///         <item><b>Armour stands:</b> the stand's slot by Valheim's name ("HandLeft", "BackLeft"…) or by its index
+        ///         in the stand's own slot list ("0", "1"…). Only shields are painted on stands.</item>
+        ///         <item><b>Item stands:</b> one slot: "" (or "0").</item>
+        ///     </list>
+        ///     What item is in a slot is Valheim's business: ItemStand.m_currentItemName and each armour stand slot's
+        ///     m_currentItemName already say. Names ignore case.
+        /// </summary>
+        public static string GetSlotBlazon(GameObject target, string slot, int pattern)
+        {
+            try
+            {
+                if (target == null) return "";
+                string s = (slot ?? "").Trim();
+                var player = target.GetComponentInParent<Player>();
+                if (player != null)
+                {
+                    var zdo = Zdo(player);
+                    if (zdo == null) return "";
+                    switch (PlayerSlot(s))
+                    {
+                        case 0: return zdo.GetString(Patterns.Key(ShieldPatches.ZdoLeft, pattern), "");
+                        case 1: return zdo.GetString(Patterns.Key(ShieldPatches.ZdoBack, pattern), "");
+                        case 2:
+                            if (pattern != 1) return "";
+                            string worn = zdo.GetString(Tabards.HeraldicTabardWearer.ZdoKey, ""); // "1|blazon" while worn
+                            int bar = worn.IndexOf('|');
+                            return bar >= 0 ? worn.Substring(bar + 1) : "";
+                        default:
+                            Fail($"GetSlotBlazon: players have no slot '{slot}' (HandLeft, BackLeft, Tabard, or 0–2).");
+                            return "";
+                    }
+                }
+                var armour = target.GetComponentInParent<ArmorStand>();
+                if (armour != null)
+                {
+                    int index = -1;
+                    if (int.TryParse(s, out int n)) index = n;
+                    else
+                        for (int i = 0; i < armour.m_slots.Count; i++)
+                            if (string.Equals(armour.m_slots[i].m_slot.ToString(), s, StringComparison.OrdinalIgnoreCase)) { index = i; break; }
+                    if (index < 0 || index >= armour.m_slots.Count)
+                    {
+                        Fail($"GetSlotBlazon: this armour stand has no slot '{slot}' (it has {string.Join(", ", armour.m_slots.Select(x => x.m_slot.ToString()))}).");
+                        return "";
+                    }
+                    return Zdo(armour)?.GetString(Patterns.Key(index + "_" + ShieldPatches.ZdoItem, pattern), "") ?? "";
+                }
+                var stand = target.GetComponentInParent<ItemStand>();
+                if (stand != null)
+                {
+                    if (s.Length > 0 && s != "0")
+                    {
+                        Fail($"GetSlotBlazon: an item stand has one slot (\"\" or \"0\"), not '{slot}'.");
+                        return "";
+                    }
+                    return Zdo(stand)?.GetString(Patterns.Key(ShieldPatches.ZdoItem, pattern), "") ?? "";
+                }
+                Fail("GetSlotBlazon: that object isn't a player, an armour stand or an item stand.");
+                return "";
+            }
+            catch (Exception ex) { Fail("GetSlotBlazon: " + ex.Message); return ""; }
+        }
+
         // ================================================================== 3. blazon text
 
         /// <summary>
@@ -275,9 +350,37 @@ namespace ValheimHeraldryMod
         // ================================================================== 6. the editor
 
         /// <summary>
-        ///     Opens the blazon editor on a placed piece that takes arms, as if the player had pressed E on it (ward access
-        ///     and paint costs as normal). <paramref name="pattern"/>: which pattern to start on (0 = the first). False if
-        ///     it can't be opened (not a piece that takes arms, no access, no game UI).
+        ///     True when the server has locked editing for the local player (its LockEditing setting; admins are never
+        ///     locked). Banners, pieces and the herald's table then open the blazon window greyed out, to look at only.
+        ///     The editor calls below ignore the lock: they're how your mod lets a player edit anyway.
+        /// </summary>
+        public static bool IsEditingLocked()
+        {
+            try { return HeraldryConfig.EditingLocked; }
+            catch { return false; }
+        }
+
+        /// <summary>
+        ///     Opens the herald's table window for the local player without a table: choose one of their shields or
+        ///     tabards (equipped first) and paint it. Paint costs follow the server's PaintCosts, like the table. Ignores
+        ///     the editing lock. False if it can't be opened (no player, no game UI, the editor already open).
+        /// </summary>
+        public static bool OpenTableEditor()
+        {
+            try
+            {
+                var player = Player.m_localPlayer;
+                if (player == null || UI.BlazonEditor.IsOpen) return false;
+                UI.BlazonEditor.Open(new Station.TableTarget(null, player));
+                return UI.BlazonEditor.IsOpen;
+            }
+            catch (Exception ex) { return Fail("OpenTableEditor: " + ex.Message); }
+        }
+
+        /// <summary>
+        ///     Opens the blazon editor on a placed piece that takes arms, as if the player had pressed E: ward access and
+        ///     paint costs as normal, but the editing lock is ignored. <paramref name="pattern"/>: which pattern to start
+        ///     on (0 = the first). False if it can't be opened (not a piece that takes arms, no ward access, no game UI).
         /// </summary>
         public static bool OpenEditor(GameObject piece, int pattern)
         {
@@ -293,7 +396,7 @@ namespace ValheimHeraldryMod
                 }
                 var hp = piece.GetComponentInParent<HeraldicPiece>();
                 if (hp == null) return Fail("OpenEditor: that object can't carry arms (no faces tagged or registered on it).");
-                return hp.OpenEditor(pattern) && UI.BlazonEditor.IsOpen;
+                return hp.OpenEditor(pattern, viaApi: true) && UI.BlazonEditor.IsOpen;
             }
             catch (Exception ex) { return Fail("OpenEditor: " + ex.Message); }
         }
@@ -302,7 +405,8 @@ namespace ValheimHeraldryMod
         ///     Opens the blazon editor on arms that aren't on anything (a guild's arms, a choice before crafting): it starts
         ///     with <paramref name="blazon"/>, previews them at <paramref name="aspect"/> (width over height; 0 = a shield's
         ///     shape), and when the player presses Apply, <paramref name="onApply"/> gets the arms as they're stored
-        ///     (checked against the server's limits). Cancel calls nothing. No paint is paid; nothing is painted.
+        ///     (checked against the server's limits). Cancel calls nothing. No paint is paid; nothing is painted. Ignores
+        ///     the editing lock.
         /// </summary>
         public static bool OpenEditorForText(string title, string blazon, float aspect, Action<string> onApply)
         {
@@ -322,6 +426,22 @@ namespace ValheimHeraldryMod
         {
             string text = (blazon ?? "").Trim();
             return text.Length > HeraldicBanner.MaxBlazonLength ? text.Substring(0, HeraldicBanner.MaxBlazonLength) : text;
+        }
+
+        private static ZDO Zdo(Component c)
+        {
+            var nview = c.GetComponent<ZNetView>() ?? c.GetComponentInParent<ZNetView>();
+            return nview != null && nview.IsValid() ? nview.GetZDO() : null;
+        }
+
+        /// <summary>A player's slot: 0 HandLeft, 1 BackLeft, 2 Tabard; -1 if it isn't one.</summary>
+        private static int PlayerSlot(string s)
+        {
+            if (int.TryParse(s, out int n)) return n >= 0 && n <= 2 ? n : -1;
+            if (string.Equals(s, "HandLeft", StringComparison.OrdinalIgnoreCase)) return 0;
+            if (string.Equals(s, "BackLeft", StringComparison.OrdinalIgnoreCase)) return 1;
+            if (string.Equals(s, "Tabard", StringComparison.OrdinalIgnoreCase)) return 2;
+            return -1;
         }
 
         private static Transform Root(GameObject go)

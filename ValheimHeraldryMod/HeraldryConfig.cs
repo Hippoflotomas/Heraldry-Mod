@@ -18,7 +18,7 @@ namespace ValheimHeraldryMod
         private static ConfigEntry<string> excludeShields;
         private static ConfigEntry<string> lastEditorMode;
         private static ConfigEntry<KeyCode> editModifier, editKey;
-        private static ConfigEntry<bool> allowSecretBlazons, showMottos;
+        private static ConfigEntry<bool> allowSecretBlazons, showMottos, lockEditing;
         private static ConfigEntry<int> maxInscriptionLength;
 
         /// <summary>The secret codes work on this server.</summary>
@@ -26,6 +26,17 @@ namespace ValheimHeraldryMod
         /// <summary>Players see the words on scrolls and ordinaries (admins always do).</summary>
         public static bool ShowMottos => showMottos?.Value ?? true;
         public static int MaxInscriptionLength => maxInscriptionLength?.Value ?? 40;
+
+        /// <summary>The server's LockEditing setting (2026-10-26): players may look at arms but not change them.</summary>
+        public static bool LockEditing => lockEditing?.Value ?? false;
+        /// <summary>What a locked-out player is told.</summary>
+        public const string LockedMessage = "Arms must first be granted in this realm.";
+
+        /// <summary>
+        ///     Editing is locked for the local player: the server has LockEditing on and they're not an admin (admins and
+        ///     the host are exempt from all locks). Other mods opening the editor through the API ignore the lock.
+        /// </summary>
+        public static bool EditingLocked => LockEditing && !(ZNet.instance != null && ZNet.instance.LocalPlayerIsAdminOrHost());
 
         /// <summary>The key (with <see cref="EditModifier"/>) that edits arms on a tagged piece that already uses E.</summary>
         public static KeyCode EditKey => editKey?.Value ?? KeyCode.E;
@@ -186,6 +197,12 @@ namespace ValheimHeraldryMod
             showMottos = config.Bind("Server", "ShowMottos", true,
                 new ConfigDescription("Show the words written on scrolls and ordinaries (inscribed \"...\"). Off = players see them blank; " +
                                       "admins still see what was written.", null, new ConfigurationManagerAttributes { IsAdminOnly = true }));
+            lockEditing = config.Bind("Server", "LockEditing", false,
+                new ConfigDescription("Players can't change arms themselves: banners, pieces and the herald's table open the blazon " +
+                                      "window greyed out, to look at only (\"" + LockedMessage + "\"). Admins aren't locked. Other " +
+                                      "mods can still let players edit through Heraldry Mod's API (a guilds mod, say), and the " +
+                                      "table still crafts paint and tabards.",
+                    null, new ConfigurationManagerAttributes { IsAdminOnly = true }));
             maxInscriptionLength = config.Bind("Server", "MaxInscriptionLength", 40,
                 new ConfigDescription("Longest inscription (motto), in characters.", new AcceptableValueRange<int>(1, 200),
                     new ConfigurationManagerAttributes { IsAdminOnly = true }));

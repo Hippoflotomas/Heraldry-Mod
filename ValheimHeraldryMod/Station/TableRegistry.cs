@@ -222,7 +222,8 @@ namespace ValheimHeraldryMod.Station
         private static void HoverText(CraftingStation __instance, ref string __result)
         {
             if (__instance.GetComponent<HeraldTable>() == null) return;
-            __result += Localization.instance.Localize("\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] Paint a shield");
+            string action = HeraldryConfig.EditingLocked ? "View your arms" : "Paint a shield";
+            __result += Localization.instance.Localize($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] {action}");
         }
     }
 }

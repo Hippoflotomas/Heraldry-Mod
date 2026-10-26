@@ -63,13 +63,16 @@ namespace ValheimHeraldryMod.Banners
 
         internal bool CanEdit(bool flash) => PrivateArea.CheckAccess(transform.position, 0f, flash, false);
 
-        /// <summary>Opens the editor on this piece (ward access needed); <paramref name="pattern"/> 0 = its first pattern.</summary>
-        internal bool OpenEditor(int pattern = 0)
+        /// <summary>
+        ///     Opens the editor on this piece (ward access needed); <paramref name="pattern"/> 0 = its first pattern. With
+        ///     editing locked it opens greyed out, unless another mod opened it through the API (<paramref name="viaApi"/>).
+        /// </summary>
+        internal bool OpenEditor(int pattern = 0, bool viaApi = false)
         {
             if (painter == null || !CanEdit(true)) return false;
             var target = new PieceTarget(this, DisplayName());
             if (pattern > 0 && Numbers.Contains(pattern)) target.ChoosePattern(pattern);
-            UI.BlazonEditor.Open(target);
+            UI.BlazonEditor.Open(target, !viaApi && HeraldryConfig.EditingLocked);
             return true;
         }
 
@@ -80,7 +83,8 @@ namespace ValheimHeraldryMod.Banners
             if (nview == null || !nview.IsValid() || painter == null) return "";
             string shown = Describe(Numbers, GetText);
             if (!CanEdit(false)) return Localization.instance.Localize($"{DisplayName()}\n{shown}\n$piece_noaccess");
-            return Localization.instance.Localize($"{DisplayName()}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] Write blazon");
+            string action = HeraldryConfig.EditingLocked ? "View arms" : "Write blazon";
+            return Localization.instance.Localize($"{DisplayName()}\n{shown}\n[<color=yellow><b>$KEY_Use</b></color>] {action}");
         }
 
         public string GetHoverName() => DisplayName();
@@ -260,8 +264,8 @@ namespace ValheimHeraldryMod.Banners
             var piece = player?.GetHoverObject()?.GetComponentInParent<HeraldicPiece>();
             if (piece == null || piece.Model == null || !piece.HasOwnInteraction()) return;
             var label = __instance.m_hoverName;
-            if (label == null || string.IsNullOrEmpty(label.text) || label.text.Contains("Edit arms")) return;
-            label.text += $"\n[<color=yellow><b>{piece.AlternativeKeyLabel}</b></color>] Edit arms";
+            if (label == null || string.IsNullOrEmpty(label.text) || label.text.Contains("Edit arms") || label.text.Contains("View arms")) return;
+            label.text += $"\n[<color=yellow><b>{piece.AlternativeKeyLabel}</b></color>] " + (HeraldryConfig.EditingLocked ? "View arms" : "Edit arms");
         }
     }
 }

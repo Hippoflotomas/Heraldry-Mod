@@ -1336,7 +1336,12 @@ namespace ValheimHeraldryMod.Heraldry
                     Take(WordStatus.Wrong, "the field itself can't be counterchanged");
                     return false;
                 }
-                Take();
+                // Counterchanged takes the field's other tincture on each side of a division, so a field of one
+                // tincture (a plain colour, a tartan, fretty) gives it nothing to swap (2026-10-26; drew magenta)
+                if (result.Field != null && result.Field.Tinctures.Count < 2)
+                    Take(WordStatus.Wrong, "counterchanged needs a divided field (per pale, quarterly…) to swap colours with; this field is one tincture");
+                else
+                    Take();
                 t = new Tincture { Kind = TinctureKind.Counterchanged, Name = "counterchanged" };
                 return true;
             }
